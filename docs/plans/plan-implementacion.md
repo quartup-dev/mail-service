@@ -951,10 +951,10 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] El cliente usa la URL de la región EU o US.
 
 *SesApiProvider (cliente simulado)*
-- [ ] Envía `Content.Raw` con el MIME del mapeo común, `Destination` con to, cc y bcc, y sin `To` si la supresión lo dejó vacío.
-- [ ] `EmailTags` con `messageId` y los tags del mensaje (caracteres no admitidos sustituidos).
-- [ ] `ConfigurationSetName` solo si está configurado.
-- [ ] Devuelve el `MessageId` y la hora del reloj.
+- [x] Envía `Content.Raw` con el MIME del mapeo común, `Destination` con to, cc y bcc, y sin `To` si la supresión lo dejó vacío.
+- [x] `EmailTags` con `messageId` y los tags del mensaje (caracteres no admitidos sustituidos).
+- [x] `ConfigurationSetName` solo si está configurado.
+- [x] Devuelve el `MessageId` y la hora del reloj.
 - [ ] `TooManyRequestsException`, `ThrottlingException`, `LimitExceededException` y 5xx → transitorio.
 - [ ] `MessageRejected`, `MailFromDomainNotVerifiedException`, `AccountSuspendedException`, `SendingPausedException`, `BadRequestException` y `NotFoundException` → permanente.
 - [ ] Por defecto: `$retryable`, red y HTTP 408 → transitorio; otro 4xx y errores locales → permanente.
