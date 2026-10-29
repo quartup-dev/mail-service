@@ -557,7 +557,7 @@ Todas las tablas se crean en esta fase, incluidas las de clientes, porque `email
 - [ ] `bun run db:migrate` aplica las migraciones en una base vacía y una segunda ejecución no falla (integración).
 
 *`IdGenerator`*
-- [ ] Genera UUID v7 distintos y ordenados por tiempo de creación.
+- [ ] Genera UUID v7 válidos y distintos.
 
 *Repositorios Drizzle (integración, mismos contratos que en memoria)*
 - [ ] `DrizzleEmailRepository` pasa el contrato de `EmailRepository`.
