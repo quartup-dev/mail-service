@@ -587,10 +587,12 @@ Todas las tablas se crean en esta fase, incluidas las de clientes, porque `email
 
 *Worker completo (integración con PostgreSQL, Redis y fakes de proveedores)*
 - [x] Procesa por ambos transportes: estado final `sent` y `smtp_config_encrypted` a `NULL`.
-- [x] Un mensaje guardado sin job en Redis acaba enviado gracias al barrido.
+- [x] Un mensaje guardado sin job en Redis acaba enviado gracias al barrido periódico (no solo al primero, que se ejecuta al registrar el scheduler).
 - [x] Un `FakeSmtpSender` lento que ocupa toda la concurrencia de `emails-smtp` no retrasa `emails-api`.
 - [x] Un error permanente deja un único intento; uno transitorio repetido agota `WORKER_MAX_ATTEMPTS` y deja `failed`.
 - [x] `WORKER_QUEUES=api` solo consume `emails-api` (y `maintenance`).
+- [x] `emails-api` procesa en paralelo tantos mensajes como `WORKER_API_CONCURRENCY` y respeta `WORKER_API_RATE_LIMIT_PER_SECOND`.
+- [x] Los jobs de mantenimiento terminados no se acumulan en Redis, y un fallo de mantenimiento se registra en el log.
 - [x] Los job schedulers de mantenimiento quedan registrados una sola vez aunque arranquen dos workers.
 - [x] El apagado espera a los jobs activos y después cierra.
 
