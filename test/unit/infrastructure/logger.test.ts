@@ -36,4 +36,14 @@ describe('createLogger', () => {
     expect(output()).toContain('[Redacted]');
     expect(output()).not.toContain(SECRET);
   });
+
+  it('honours the configured level', () => {
+    const { logger, output } = captureLogs('warn');
+
+    logger.info('hidden message');
+    logger.warn('visible message');
+
+    expect(output()).not.toContain('hidden message');
+    expect(output()).toContain('visible message');
+  });
 });
