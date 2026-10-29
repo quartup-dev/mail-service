@@ -29,6 +29,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
   const app = Fastify({
     ...(deps.logger && { loggerInstance: deps.logger }),
     genReqId: generateRequestId,
+    bodyLimit: deps.limits.maxBodyBytes,
   });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -37,7 +38,9 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
   void app.register(healthRoutes, { readiness: deps.readiness });
   void app.register(emailRoutes, {
     apiClients: deps.apiClients,
+    queueEmail: deps.queueEmail,
     getEmailStatus: deps.getEmailStatus,
+    maxAttachmentsBytes: deps.limits.maxAttachmentsBytes,
   });
   return app;
 }
