@@ -409,5 +409,37 @@ export function describeEmailRepositoryContract(
         expect(await repository.deleteFinalEmails(clock.now(), 2)).toBe(1);
       });
     });
+
+    describe('concurrency', () => {
+      it('creates a single message when the same idempotency key arrives in parallel', async () => {
+        const results = await Promise.all(
+          Array.from({ length: 5 }, () =>
+            repository.create({
+              ...createInput({ idempotencyKey: 'key-1' }),
+              message: messageFrom(),
+            }),
+          ),
+        );
+
+        expect(results.filter((result) => result.created)).toHaveLength(1);
+        expect(new Set(results.map((result) => result.email.id)).size).toBe(1);
+      });
+
+      it('never moves a recipient back with parallel updates', async () => {
+        const { email } = await repository.create(createInput());
+        const recipient = email.recipients[0]?.email ?? '';
+        const at = clock.now();
+
+        await Promise.all([
+          repository.advanceRecipientStatus(email.id, recipient, 'delivered', at),
+          repository.setRecipientStatuses(email.id, [{ email: recipient, status: 'accepted' }]),
+          repository.advanceRecipientStatus(email.id, recipient, 'bounced', at),
+          repository.setRecipientStatuses(email.id, [{ email: recipient, status: 'accepted' }]),
+          repository.advanceRecipientStatus(email.id, recipient, 'delivered', at),
+        ]);
+
+        expect((await repository.findById(email.id))?.recipients[0]?.status).toBe('bounced');
+      });
+    });
   });
 }
