@@ -1,0 +1,6 @@
+dist/
+coverage/
+docs/
+.claude/
+bun.lock
+docker/dev-certs/

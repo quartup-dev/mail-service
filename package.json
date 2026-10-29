@@ -1,0 +1,54 @@
+{
+  "name": "mail-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Microservicio de envío de correo por SMTP o API (Mailgun, SES)",
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "dev:worker": "echo 'Pendiente: el worker se implementa en la fase 2' && exit 1",
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "start:worker": "echo 'Pendiente: el worker se implementa en la fase 2' && exit 1",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:integration": "NODE_EXTRA_CA_CERTS=./docker/dev-certs/ca.pem vitest run --project integration",
+    "db:generate": "echo 'Pendiente: fase 2' && exit 1",
+    "db:migrate": "echo 'Pendiente: fase 2' && exit 1",
+    "openapi:export": "echo 'Pendiente: fase 3' && exit 1",
+    "openapi:check": "echo 'Pendiente: fase 3' && exit 1",
+    "keys": "echo 'Pendiente: fase 3' && exit 1",
+    "suppressions": "echo 'Pendiente: fase 5' && exit 1",
+    "dev:certs": "bash scripts/dev-certs.sh"
+  },
+  "dependencies": {
+    "fastify": "5.12.7",
+    "nodemailer": "10.3.1",
+    "pino": "10.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@types/nodemailer": "8.0.2",
+    "@vitest/coverage-v8": "5.0.5",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "tsup": "9.0.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}
