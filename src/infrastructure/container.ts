@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { Redis } from 'ioredis';
+import { Redis, type RedisOptions } from 'ioredis';
 import packageJson from '../../package.json' with { type: 'json' };
 import { ApplyRetention } from '../application/apply-retention';
 import type { FastifyBaseLogger as FastifyLogger } from 'fastify';
@@ -27,6 +27,19 @@ const MAINTENANCE_BATCH_SIZE = 1_000;
 
 const RETENTION_INTERVAL_MS = 3_600_000;
 
+// Un cliente por proceso. Sus errores (reconexiones) van al log en lugar de a la consola
+function connectRedis(url: string, options: RedisOptions, logger: Logger): Redis {
+  const redis = new Redis(url, options);
+  redis.on('error', (error) => logger.warn({ err: error }, 'Redis connection error'));
+  return redis;
+}
+
+// quit() falla si la conexión no está abierta (Redis caído): en ese caso basta con cortarla
+async function closeRedis(redis: Redis): Promise<void> {
+  if (redis.status === 'ready') await redis.quit();
+  else redis.disconnect();
+}
+
 export interface WorkerContainer {
   runtime: WorkerRuntime;
   health: HealthServer;
@@ -37,12 +50,13 @@ export interface WorkerContainer {
 export function createWorkerContainer(config: WorkerConfig, logger: Logger): WorkerContainer {
   const { db, pool } = connectDatabase(config.databaseUrl);
   // BullMQ exige maxRetriesPerRequest: null en las conexiones de sus workers
-  const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+  const redis = connectRedis(config.redisUrl, { maxRetriesPerRequest: null }, logger);
   const clock = new SystemClock();
   const emails = new DrizzleEmailRepository(db, clock);
   const emailQueue = new BullMqEmailQueue(redis, {
     maxAttempts: config.worker.maxAttempts,
     backoffBaseMs: config.worker.backoffBaseMs,
+    logger,
   });
 
   const runtime = new WorkerRuntime({
@@ -102,7 +116,7 @@ export function createWorkerContainer(config: WorkerConfig, logger: Logger): Wor
     // Tras cerrar el runtime (que espera a los jobs activos): colas, Redis y PostgreSQL
     async close() {
       await emailQueue.close();
-      await redis.quit();
+      await closeRedis(redis);
       await pool.end();
     },
   };
@@ -119,10 +133,14 @@ export function createApiContainer(
 ): ApiContainer {
   const { db, pool } = connectDatabase(config.databaseUrl);
   // Sin cola offline: si Redis no responde, encolar falla enseguida y el barrido recoge el mensaje
-  const redis = new Redis(config.redisUrl, { enableOfflineQueue: false, maxRetriesPerRequest: 1 });
+  const redis = connectRedis(
+    config.redisUrl,
+    { enableOfflineQueue: false, maxRetriesPerRequest: 1 },
+    logger,
+  );
   const clock = new SystemClock();
   const emails = new DrizzleEmailRepository(db, clock);
-  const emailQueue = new BullMqEmailQueue(redis, config.jobs);
+  const emailQueue = new BullMqEmailQueue(redis, { ...config.jobs, logger });
 
   const app = buildApp({
     logger,
@@ -168,7 +186,7 @@ export function createApiContainer(
 
   app.addHook('onClose', async () => {
     await emailQueue.close();
-    await redis.quit();
+    await closeRedis(redis);
     await pool.end();
   });
   return { app };

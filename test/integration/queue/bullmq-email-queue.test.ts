@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BullMqEmailQueue } from '../../../src/infrastructure/queue/bullmq-email-queue';
 import { TEST_REDIS_URL } from '../../support/integration';
+import { waitFor } from '../../support/wait-for';
 
 const connection = new Redis(TEST_REDIS_URL, { maxRetriesPerRequest: null });
 
@@ -72,5 +73,26 @@ describe('BullMqEmailQueue', () => {
       removeOnComplete: true,
       removeOnFail: true,
     });
+  });
+
+  it('fails fast instead of waiting when Redis is not available', async () => {
+    const unavailable = new Redis('redis://127.0.0.1:1', {
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 1,
+    });
+    unavailable.on('error', () => {});
+    await waitFor(() => unavailable.status === 'reconnecting');
+    const queue = new BullMqEmailQueue(unavailable, {
+      maxAttempts: 5,
+      backoffBaseMs: 30_000,
+      prefix,
+    });
+
+    const started = Date.now();
+    await expect(queue.enqueue(randomUUID(), 'api')).rejects.toThrow('Redis is not available');
+    expect(Date.now() - started).toBeLessThan(500);
+
+    await queue.close();
+    unavailable.disconnect();
   });
 });
