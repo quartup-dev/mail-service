@@ -25,3 +25,30 @@ export class UndecryptableSecretError extends Error {
     this.name = 'UndecryptableSecretError';
   }
 }
+
+export type EmailRequestRejectionCode =
+  | 'TRANSPORT_NOT_ALLOWED'
+  | 'API_TRANSPORT_NOT_CONFIGURED'
+  | 'FROM_DOMAIN_NOT_ALLOWED'
+  | 'SMTP_HOST_NOT_ALLOWED'
+  | 'IDEMPOTENCY_CONFLICT';
+
+// La petición es válida, pero la política o la configuración impiden atenderla
+export class EmailRequestRejectedError extends Error {
+  constructor(
+    readonly code: EmailRequestRejectionCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = new.target.name;
+  }
+}
+
+export class SmtpHostNotAllowedError extends EmailRequestRejectedError {
+  constructor(
+    readonly host: string,
+    reason: string,
+  ) {
+    super('SMTP_HOST_NOT_ALLOWED', `SMTP host ${host} is not allowed: ${reason}`);
+  }
+}

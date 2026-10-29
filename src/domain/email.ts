@@ -32,9 +32,7 @@ export type EmailRequest = Omit<EmailMessage, 'id'>;
 
 export type TransportType = 'smtp' | 'api';
 
-export type TransportSpec =
-  | { type: 'smtp'; smtp: SmtpServerConfig }
-  | { type: 'api' }; // el proveedor lo decide MAIL_API_PROVIDER
+export type TransportSpec = { type: 'smtp'; smtp: SmtpServerConfig } | { type: 'api' }; // el proveedor lo decide MAIL_API_PROVIDER
 
 export interface SmtpServerConfig {
   host: string;
@@ -93,6 +91,24 @@ export function recipientStatusRank(status: RecipientStatus): number {
   return RECIPIENT_STATUS_RANK[status];
 }
 
-export function canAdvanceRecipientStatus(current: RecipientStatus, next: RecipientStatus): boolean {
+export function canAdvanceRecipientStatus(
+  current: RecipientStatus,
+  next: RecipientStatus,
+): boolean {
   return recipientStatusRank(next) > recipientStatusRank(current);
+}
+
+// Destinatarios de to, cc y bcc, con la dirección en minúsculas
+export function recipientsOf(
+  message: Pick<EmailMessage, 'to' | 'cc' | 'bcc'>,
+): Array<{ email: string; kind: RecipientKind }> {
+  const withKind = (kind: RecipientKind) => (address: Address) => ({
+    email: address.email.toLowerCase(),
+    kind,
+  });
+  return [
+    ...message.to.map(withKind('to')),
+    ...(message.cc ?? []).map(withKind('cc')),
+    ...(message.bcc ?? []).map(withKind('bcc')),
+  ];
 }

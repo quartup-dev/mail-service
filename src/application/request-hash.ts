@@ -5,7 +5,9 @@ import type { EmailRequest, SmtpServerConfig } from '../domain/email';
 // y la clave DKIM entran como HMAC con el pepper: el hash guardado no permite atacar
 // esos secretos por fuerza bruta
 export function computeRequestHash(request: EmailRequest, pepper: Buffer): string {
-  return createHash('sha256').update(JSON.stringify(withHashedSecrets(request, pepper))).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(withHashedSecrets(request, pepper)))
+    .digest('hex');
 }
 
 function withHashedSecrets(request: EmailRequest, pepper: Buffer): EmailRequest {

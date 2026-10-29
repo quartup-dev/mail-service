@@ -12,7 +12,9 @@ describe('computeRequestHash', () => {
   });
 
   it('produces the same hash for the same request', () => {
-    expect(computeRequestHash(smtpRequest(), PEPPER)).toBe(computeRequestHash(smtpRequest(), PEPPER));
+    expect(computeRequestHash(smtpRequest(), PEPPER)).toBe(
+      computeRequestHash(smtpRequest(), PEPPER),
+    );
   });
 
   it('hashes the SMTP password and DKIM key with the pepper instead of in plain text', () => {
