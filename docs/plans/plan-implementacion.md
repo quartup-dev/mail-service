@@ -945,10 +945,10 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Adjuntos como `attachment` con nombre y tipo; los que tienen `contentId`, como `inline` con ese nombre.
 - [x] Envía al dominio configurado y devuelve el id sin `<>` y la hora del reloj.
 - [x] Con `to` vacío lanza `PermanentProviderError` `MAILGUN_TO_REQUIRED` sin llamar a la API.
-- [ ] HTTP 429 y 5xx → transitorio; 400, 401, 403 y 404 → permanente.
-- [ ] Errores de red (que `mailgun.js` entrega con estado 400 y el código de error como mensaje) → transitorio.
-- [ ] Por defecto: 408 → transitorio; otro 4xx y errores locales → permanente.
-- [ ] El cliente usa la URL de la región EU o US.
+- [x] HTTP 429 y 5xx → transitorio; 400, 401, 403 y 404 → permanente.
+- [x] Errores de red (que `mailgun.js` entrega con estado 400 y el código de error como mensaje) → transitorio.
+- [x] Por defecto: 408 → transitorio; otro 4xx y errores locales → permanente.
+- [x] El cliente usa la URL de la región EU o US.
 
 *SesApiProvider (cliente simulado)*
 - [ ] Envía `Content.Raw` con el MIME del mapeo común, `Destination` con to, cc y bcc, y sin `To` si la supresión lo dejó vacío.

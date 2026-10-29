@@ -1,8 +1,9 @@
 import type { MailgunMessageData, MessagesSendResult } from 'mailgun.js/definitions';
 import { describe, expect, it } from 'vitest';
-import { PermanentProviderError } from '../../../../src/domain/errors';
+import { PermanentProviderError, TransientProviderError } from '../../../../src/domain/errors';
 import {
   MailgunApiProvider,
+  mailgunClientOptions,
   type MailgunMessages,
 } from '../../../../src/infrastructure/providers/mailgun-api-provider';
 import { FakeClock } from '../../../support/fake-clock';
@@ -19,6 +20,12 @@ class FakeMailgunMessages implements MailgunMessages {
     this.calls.push({ domain, data });
     return { id: '<20261029.abc@mg.example.com>', message: 'Queued. Thank you.', status: 200 };
   }
+}
+
+// Error HTTP como lo construye mailgun.js. Sin respuesta (red), axios no da estado y mailgun.js
+// pone 400 con el código de error de Node como mensaje
+function mailgunApiError(status: number, message: string, details = ''): Error {
+  return Object.assign(new Error(message), { status, details, type: 'MailgunAPIError' });
 }
 
 function providerWith() {
@@ -138,5 +145,84 @@ describe('MailgunApiProvider', () => {
       code: 'MAILGUN_TO_REQUIRED',
     });
     expect(messages.calls).toHaveLength(0);
+  });
+
+  describe('error classification', () => {
+    async function failureOf(error: Error) {
+      const { provider, messages } = providerWith();
+      messages.failure = error;
+      return provider.send(messageFrom()).catch((failure: unknown) => failure);
+    }
+
+    it.each([429, 500, 502, 503])('treats HTTP %i as transient', async (status) => {
+      const failure = await failureOf(mailgunApiError(status, 'Error'));
+
+      expect(failure).toBeInstanceOf(TransientProviderError);
+      expect(failure).toMatchObject({ provider: 'mailgun', code: `MAILGUN_HTTP_${status}` });
+    });
+
+    it.each([400, 401, 403, 404])('treats HTTP %i as permanent', async (status) => {
+      const failure = await failureOf(mailgunApiError(status, 'Error', 'to parameter is missing'));
+
+      expect(failure).toBeInstanceOf(PermanentProviderError);
+      expect(failure).toMatchObject({ provider: 'mailgun', code: `MAILGUN_HTTP_${status}` });
+    });
+
+    it.each([
+      ['ECONNRESET', 'socket hang up'],
+      ['ECONNREFUSED', 'connect ECONNREFUSED 10.0.0.1:443'],
+      ['ENOTFOUND', 'getaddrinfo ENOTFOUND api.eu.mailgun.net'],
+      ['ECONNABORTED', 'timeout of 30000ms exceeded'],
+      ['ERR_NETWORK', 'Network Error'],
+    ])('treats a network error without response (%s) as transient', async (code, details) => {
+      const failure = await failureOf(mailgunApiError(400, code, details));
+
+      expect(failure).toBeInstanceOf(TransientProviderError);
+      expect(failure).toMatchObject({ provider: 'mailgun', code: 'MAILGUN_NETWORK_ERROR' });
+    });
+
+    it('treats HTTP 408 as transient by default', async () => {
+      const failure = await failureOf(mailgunApiError(408, 'Request Timeout'));
+
+      expect(failure).toBeInstanceOf(TransientProviderError);
+      expect(failure).toMatchObject({ code: 'MAILGUN_HTTP_408' });
+    });
+
+    it.each([413, 422])('treats any other HTTP %i as permanent by default', async (status) => {
+      const failure = await failureOf(mailgunApiError(status, 'Error'));
+
+      expect(failure).toBeInstanceOf(PermanentProviderError);
+      expect(failure).toMatchObject({ code: `MAILGUN_HTTP_${status}` });
+    });
+
+    it('treats a network error raised outside the HTTP layer as transient', async () => {
+      const failure = await failureOf(
+        Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      );
+
+      expect(failure).toBeInstanceOf(TransientProviderError);
+      expect(failure).toMatchObject({ code: 'MAILGUN_NETWORK_ERROR' });
+    });
+
+    it('treats a local error, such as invalid data, as permanent', async () => {
+      const failure = await failureOf(new TypeError('Invalid attachment'));
+
+      expect(failure).toBeInstanceOf(PermanentProviderError);
+      expect(failure).toMatchObject({ code: 'MAILGUN_ERROR', message: 'Invalid attachment' });
+    });
+  });
+});
+
+describe('mailgunClientOptions', () => {
+  it.each([
+    ['eu', 'https://api.eu.mailgun.net'],
+    ['us', 'https://api.mailgun.net'],
+  ] as const)('uses the %s region URL, the API key and a request timeout', (region, url) => {
+    expect(mailgunClientOptions({ apiKey: 'not-a-real-key', region })).toEqual({
+      username: 'api',
+      key: 'not-a-real-key',
+      url,
+      timeout: 30_000,
+    });
   });
 });
