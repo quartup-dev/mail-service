@@ -145,6 +145,26 @@ describe('loadConfig', () => {
     expect(config.smtp.poolMaxConnections).toBe(5);
   });
 
+  it.each([
+    ['payload retention exceeds events retention', { PAYLOAD_RETENTION_DAYS: '91' }],
+    ['events retention exceeds message retention', { EVENTS_RETENTION_DAYS: '366' }],
+  ])('rejects retention periods out of order: %s', (_label, overrides) => {
+    const env = { ...workerEnv(), ...overrides };
+
+    expect(configErrorOf('worker', env).message).toMatch(/RETENTION_DAYS/);
+  });
+
+  it('accepts equal retention periods', () => {
+    const env = {
+      ...workerEnv(),
+      PAYLOAD_RETENTION_DAYS: '30',
+      EVENTS_RETENTION_DAYS: '30',
+      MESSAGE_RETENTION_DAYS: '30',
+    };
+
+    expect(loadConfig('worker', env).maintenance.messageRetentionDays).toBe(30);
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 

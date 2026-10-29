@@ -87,6 +87,7 @@ const workerOnlyFields = {
 
 type CommonEnv = z.output<z.ZodObject<typeof commonFields>>;
 type ServerEnv = z.output<z.ZodObject<typeof serverFields>>;
+type WorkerEnv = z.output<z.ZodObject<typeof workerOnlyFields>>;
 
 // Reglas que relacionan varias variables de API y worker
 const checkServerRules = (env: ServerEnv, ctx: z.RefinementCtx) => {
@@ -96,6 +97,23 @@ const checkServerRules = (env: ServerEnv, ctx: z.RefinementCtx) => {
       code: 'custom',
       path: ['SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS'],
       message: 'must differ from SMTP_CREDENTIALS_ENCRYPTION_KEY',
+    });
+  }
+};
+
+const checkWorkerRules = (env: WorkerEnv, ctx: z.RefinementCtx) => {
+  if (env.PAYLOAD_RETENTION_DAYS > env.EVENTS_RETENTION_DAYS) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['PAYLOAD_RETENTION_DAYS'],
+      message: 'must not exceed EVENTS_RETENTION_DAYS',
+    });
+  }
+  if (env.EVENTS_RETENTION_DAYS > env.MESSAGE_RETENTION_DAYS) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['EVENTS_RETENTION_DAYS'],
+      message: 'must not exceed MESSAGE_RETENTION_DAYS',
     });
   }
 };
@@ -141,6 +159,7 @@ const schemas = {
   worker: z
     .object({ ...commonFields, ...serverFields, ...workerOnlyFields })
     .superRefine(checkServerRules)
+    .superRefine(checkWorkerRules)
     .transform((env) => ({
       ...toCommon(env),
       ...toServer(env),
