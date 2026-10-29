@@ -1,0 +1,18 @@
+# Dependencias y build
+node_modules/
+dist/
+coverage/
+
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Certificados de desarrollo (los genera scripts/dev-certs.sh)
+docker/dev-certs/
+
+# Sistema y editores
+.DS_Store
+*.log
+.vscode/
+.idea/
