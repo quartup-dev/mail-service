@@ -955,10 +955,10 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] `EmailTags` con `messageId` y los tags del mensaje (caracteres no admitidos sustituidos).
 - [x] `ConfigurationSetName` solo si está configurado.
 - [x] Devuelve el `MessageId` y la hora del reloj.
-- [ ] `TooManyRequestsException`, `ThrottlingException`, `LimitExceededException` y 5xx → transitorio.
-- [ ] `MessageRejected`, `MailFromDomainNotVerifiedException`, `AccountSuspendedException`, `SendingPausedException`, `BadRequestException` y `NotFoundException` → permanente.
-- [ ] Por defecto: `$retryable`, red y HTTP 408 → transitorio; otro 4xx y errores locales → permanente.
-- [ ] El cliente se crea con `maxAttempts: 1` y la región configurada.
+- [x] `TooManyRequestsException`, `ThrottlingException`, `LimitExceededException` y 5xx → transitorio.
+- [x] `MessageRejected`, `MailFromDomainNotVerifiedException`, `AccountSuspendedException`, `SendingPausedException`, `BadRequestException` y `NotFoundException` → permanente.
+- [x] Por defecto: `$retryable`, red y HTTP 408 → transitorio; otro 4xx y errores locales → permanente.
+- [x] El cliente se crea con `maxAttempts: 1` y la región configurada.
 
 *Integración (Mailpit)*
 - [x] El correo llega por STARTTLS en el 587 con asunto, cuerpos, adjuntos y `X-Mail-Service-Id`.
