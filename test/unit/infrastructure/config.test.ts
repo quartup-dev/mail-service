@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../../../src/infrastructure/config';
+import { ConfigError, loadConfig, type ProcessKind } from '../../../src/infrastructure/config';
 
 type Env = Record<string, string | undefined>;
 
@@ -15,7 +15,44 @@ const apiEnv = (): Env => ({
   API_KEY_PEPPER: PEPPER,
 });
 
+const workerEnv = (): Env => ({
+  ...baseEnv(),
+  REDIS_URL: 'redis://localhost:6379',
+  SMTP_CREDENTIALS_ENCRYPTION_KEY: KEY_A,
+});
+
+const keysCliEnv = (): Env => ({ ...baseEnv(), API_KEY_PEPPER: PEPPER });
+
+const suppressionsCliEnv = (): Env => baseEnv();
+
+const validEnvFor: Record<ProcessKind, () => Env> = {
+  api: apiEnv,
+  worker: workerEnv,
+  'keys-cli': keysCliEnv,
+  'suppressions-cli': suppressionsCliEnv,
+};
+
+const PROCESS_KINDS = Object.keys(validEnvFor) as ProcessKind[];
+
+function configErrorOf(kind: ProcessKind, env: Env): ConfigError {
+  try {
+    loadConfig(kind, env);
+  } catch (error) {
+    if (error instanceof ConfigError) return error;
+    throw error;
+  }
+  throw new Error(`loadConfig('${kind}') did not fail`);
+}
+
 describe('loadConfig', () => {
+  it.each(PROCESS_KINDS)('requires DATABASE_URL in %s and names it in the error', (kind) => {
+    const env = { ...validEnvFor[kind](), DATABASE_URL: undefined };
+
+    const error = configErrorOf(kind, env);
+
+    expect(error.message).toContain('DATABASE_URL');
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
