@@ -179,6 +179,30 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('SMTP_ALLOWED_PRIVATE_HOSTS', () => {
+    it.each(['api', 'worker'] as const)('is parsed as a trimmed list in %s', (kind) => {
+      const env = { ...validEnvFor[kind](), SMTP_ALLOWED_PRIVATE_HOSTS: ' mailpit , localhost ,, ' };
+
+      expect(loadConfig(kind, env).smtp.allowedPrivateHosts).toEqual(['mailpit', 'localhost']);
+    });
+
+    it.each(['api', 'worker'] as const)('must be empty in production for %s', (kind) => {
+      const env = {
+        ...validEnvFor[kind](),
+        NODE_ENV: 'production',
+        SMTP_ALLOWED_PRIVATE_HOSTS: 'mailpit',
+      };
+
+      expect(configErrorOf(kind, env).message).toContain('SMTP_ALLOWED_PRIVATE_HOSTS');
+    });
+
+    it.each(['api', 'worker'] as const)('may be empty in production for %s', (kind) => {
+      const env = { ...validEnvFor[kind](), NODE_ENV: 'production', SMTP_ALLOWED_PRIVATE_HOSTS: '' };
+
+      expect(loadConfig(kind, env).smtp.allowedPrivateHosts).toEqual([]);
+    });
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 

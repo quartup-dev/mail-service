@@ -92,13 +92,20 @@ type ServerEnv = z.output<z.ZodObject<typeof serverFields>>;
 type WorkerEnv = z.output<z.ZodObject<typeof workerOnlyFields>>;
 
 // Reglas que relacionan varias variables de API y worker
-const checkServerRules = (env: ServerEnv, ctx: z.RefinementCtx) => {
+const checkServerRules = (env: CommonEnv & ServerEnv, ctx: z.RefinementCtx) => {
   const previous = env.SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS;
   if (previous?.equals(env.SMTP_CREDENTIALS_ENCRYPTION_KEY)) {
     ctx.addIssue({
       code: 'custom',
       path: ['SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS'],
       message: 'must differ from SMTP_CREDENTIALS_ENCRYPTION_KEY',
+    });
+  }
+  if (env.NODE_ENV === 'production' && env.SMTP_ALLOWED_PRIVATE_HOSTS.length > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SMTP_ALLOWED_PRIVATE_HOSTS'],
+      message: 'must be empty in production',
     });
   }
 };
