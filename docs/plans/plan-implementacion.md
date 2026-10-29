@@ -92,24 +92,24 @@ Además del stack de CLAUDE.md:
 - [x] Los tests se ejecutan sobre Node, no sobre Bun.
 
 *Configuración (`loadConfig(kind, env)`; `kind`: `api`, `worker`, `keys-cli`, `suppressions-cli`)*
-- [ ] `api` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.
-- [ ] `worker` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.
-- [ ] Sin `DATABASE_URL` falla en los cuatro procesos, y el error nombra la variable.
-- [ ] `REDIS_URL` es obligatoria en `api` y `worker`, no en los CLIs.
-- [ ] `SMTP_CREDENTIALS_ENCRYPTION_KEY` es obligatoria en `api` y `worker`, no en los CLIs.
-- [ ] `SMTP_CREDENTIALS_ENCRYPTION_KEY` y `API_KEY_PEPPER` rechazan valores que no sean 32 bytes en base64.
-- [ ] `API_KEY_PEPPER` es obligatoria en `api` y `keys-cli`, no en `worker` ni `suppressions-cli`.
-- [ ] `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` es opcional, y si se define debe ser distinta de la activa.
-- [ ] Rechaza `PAYLOAD_RETENTION_DAYS` > `EVENTS_RETENTION_DAYS` o `EVENTS_RETENTION_DAYS` > `MESSAGE_RETENTION_DAYS`.
-- [ ] Con `NODE_ENV=production`, rechaza `SMTP_ALLOWED_PRIVATE_HOSTS` no vacío.
-- [ ] `MAIL_API_PROVIDER` vacío deja el proveedor sin definir; un valor desconocido falla.
-- [ ] Con `mailgun`: `api` exige `MAILGUN_WEBHOOK_SIGNING_KEY`; `worker` exige `MAILGUN_API_KEY` y `MAILGUN_DOMAIN`.
-- [ ] Con `ses`: `api` y `worker` exigen `AWS_REGION`; `api` exige `SES_SNS_TOPIC_ARNS`.
-- [ ] Las listas separadas por comas se convierten en arrays sin espacios ni elementos vacíos.
-- [ ] `WORKER_QUEUES` solo admite `api` y `smtp`.
-- [ ] Las variables numéricas rechazan valores no enteros o no positivos.
-- [ ] Un entorno con varios errores los informa todos en un único error.
-- [ ] El mensaje de error nunca incluye el valor de una variable secreta.
+- [x] `api` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.
+- [x] `worker` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.
+- [x] Sin `DATABASE_URL` falla en los cuatro procesos, y el error nombra la variable.
+- [x] `REDIS_URL` es obligatoria en `api` y `worker`, no en los CLIs.
+- [x] `SMTP_CREDENTIALS_ENCRYPTION_KEY` es obligatoria en `api` y `worker`, no en los CLIs.
+- [x] `SMTP_CREDENTIALS_ENCRYPTION_KEY` y `API_KEY_PEPPER` rechazan valores que no sean 32 bytes en base64.
+- [x] `API_KEY_PEPPER` es obligatoria en `api` y `keys-cli`, no en `worker` ni `suppressions-cli`.
+- [x] `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` es opcional, y si se define debe ser distinta de la activa.
+- [x] Rechaza `PAYLOAD_RETENTION_DAYS` > `EVENTS_RETENTION_DAYS` o `EVENTS_RETENTION_DAYS` > `MESSAGE_RETENTION_DAYS`.
+- [x] Con `NODE_ENV=production`, rechaza `SMTP_ALLOWED_PRIVATE_HOSTS` no vacío.
+- [x] `MAIL_API_PROVIDER` vacío deja el proveedor sin definir; un valor desconocido falla.
+- [x] Con `mailgun`: `api` exige `MAILGUN_WEBHOOK_SIGNING_KEY`; `worker` exige `MAILGUN_API_KEY` y `MAILGUN_DOMAIN`.
+- [x] Con `ses`: `api` y `worker` exigen `AWS_REGION`; `api` exige `SES_SNS_TOPIC_ARNS`.
+- [x] Las listas separadas por comas se convierten en arrays sin espacios ni elementos vacíos.
+- [x] `WORKER_QUEUES` solo admite `api` y `smtp`.
+- [x] Las variables numéricas rechazan valores no enteros o no positivos.
+- [x] Un entorno con varios errores los informa todos en un único error.
+- [x] El mensaje de error nunca incluye el valor de una variable secreta.
 
 *Logger*
 - [ ] Redacta la cabecera `authorization` de las peticiones.
