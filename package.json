@@ -10,10 +10,10 @@
   },
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
-    "dev:worker": "echo 'Pendiente: el worker se implementa en la fase 2' && exit 1",
+    "dev:worker": "tsx watch --env-file-if-exists=.env src/worker.ts",
     "build": "tsup",
     "start": "node dist/server.js",
-    "start:worker": "echo 'Pendiente: el worker se implementa en la fase 2' && exit 1",
+    "start:worker": "node dist/worker.js",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

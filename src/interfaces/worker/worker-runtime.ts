@@ -14,7 +14,7 @@ import { createMaintenanceProcessor, type MaintenanceUseCases } from './maintena
 export interface WorkerRuntimeOptions {
   connection: ConnectionOptions; // con maxRetriesPerRequest: null, como exige BullMQ
   prefix?: string;
-  queues: TransportType[]; // WORKER_QUEUES
+  queues: readonly TransportType[]; // WORKER_QUEUES
   concurrency: Record<TransportType, number>;
   apiRateLimitPerSecond: number;
   sweepIntervalMs: number;
