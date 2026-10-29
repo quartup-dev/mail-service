@@ -386,4 +386,12 @@ describe('loadConfig', () => {
     expect(config.smtpEncryptionKeyPrevious).toBeUndefined();
     expect(config.apiKeyPepper).toEqual(Buffer.from(PEPPER, 'base64'));
   });
+
+  it('loads the job retry settings in the api, which enqueues most jobs', () => {
+    expect(loadConfig('api', apiEnv()).jobs).toEqual({ maxAttempts: 5, backoffBaseMs: 30_000 });
+    expect(
+      loadConfig('api', { ...apiEnv(), WORKER_MAX_ATTEMPTS: '3', WORKER_BACKOFF_BASE_MS: '1000' })
+        .jobs,
+    ).toEqual({ maxAttempts: 3, backoffBaseMs: 1_000 });
+  });
 });

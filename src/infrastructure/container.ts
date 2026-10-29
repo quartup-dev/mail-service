@@ -1,20 +1,30 @@
+import type { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
+import packageJson from '../../package.json' with { type: 'json' };
 import { ApplyRetention } from '../application/apply-retention';
+import type { FastifyBaseLogger as FastifyLogger } from 'fastify';
 import type { Logger } from '../application/ports/logger';
+import { GetEmailStatus } from '../application/get-email-status';
 import { ProcessEmailJob } from '../application/process-email-job';
+import { QueueEmail } from '../application/queue-email';
 import { SweepPendingEmails } from '../application/sweep-pending-emails';
+import { buildApp } from '../interfaces/http/app';
 import { HealthServer } from '../interfaces/worker/health-server';
 import { WorkerRuntime } from '../interfaces/worker/worker-runtime';
-import type { WorkerConfig } from './config';
+import { DrizzleApiClientRepository } from './auth/drizzle-api-client-repository';
+import type { ApiConfig, WorkerConfig } from './config';
+import { UuidV7IdGenerator } from './crypto/uuid-v7-id-generator';
 import { AesGcmSecretBox } from './crypto/aes-gcm-secret-box';
 import { connectDatabase } from './db/client';
 import { DrizzleEmailRepository } from './db/drizzle-email-repository';
 import { DrizzleSuppressionRepository } from './db/drizzle-suppression-repository';
+import { DnsSmtpHostGuard, lookupAllAddresses } from './net/dns-smtp-host-guard';
 import { UnavailableSmtpHostGuard, UnavailableSmtpSender } from './providers/unavailable';
 import { BullMqEmailQueue } from './queue/bullmq-email-queue';
 import { SystemClock } from './system-clock';
 
 const MAINTENANCE_BATCH_SIZE = 1_000;
+
 const RETENTION_INTERVAL_MS = 3_600_000;
 
 export interface WorkerContainer {
@@ -96,4 +106,70 @@ export function createWorkerContainer(config: WorkerConfig, logger: Logger): Wor
       await pool.end();
     },
   };
+}
+
+export interface ApiContainer {
+  app: FastifyInstance;
+}
+
+// Las conexiones se cierran en onClose: server.ts solo llama a app.close()
+export function createApiContainer(
+  config: ApiConfig,
+  logger: Logger & FastifyLogger,
+): ApiContainer {
+  const { db, pool } = connectDatabase(config.databaseUrl);
+  // Sin cola offline: si Redis no responde, encolar falla enseguida y el barrido recoge el mensaje
+  const redis = new Redis(config.redisUrl, { enableOfflineQueue: false, maxRetriesPerRequest: 1 });
+  const clock = new SystemClock();
+  const emails = new DrizzleEmailRepository(db, clock);
+  const emailQueue = new BullMqEmailQueue(redis, config.jobs);
+
+  const app = buildApp({
+    logger,
+    limits: {
+      maxBodyBytes: config.maxBodyBytes,
+      maxAttachmentsBytes: config.maxAttachmentsBytes,
+      rateLimitDefaultPerMinute: config.rateLimitDefaultPerMinute,
+    },
+    apiClients: new DrizzleApiClientRepository(db, config.apiKeyPepper, clock),
+    queueEmail: new QueueEmail({
+      emails,
+      queue: emailQueue,
+      smtpHostGuard: new DnsSmtpHostGuard(
+        {
+          allowedHosts: config.smtp.allowedHosts,
+          allowedPrivateHosts: config.smtp.allowedPrivateHosts,
+        },
+        lookupAllAddresses,
+      ),
+      secretBox: new AesGcmSecretBox({
+        active: config.smtpEncryptionKey,
+        ...(config.smtpEncryptionKeyPrevious && { previous: config.smtpEncryptionKeyPrevious }),
+      }),
+      ids: new UuidV7IdGenerator(),
+      logger,
+      apiProviderName: config.mailApiProvider?.name ?? null,
+      allowedFromDomains: config.allowedFromDomains,
+      requestHashPepper: config.apiKeyPepper,
+    }),
+    getEmailStatus: new GetEmailStatus({ emails }),
+    rateLimitRedis: redis,
+    readiness: {
+      postgres: async () => {
+        await pool.query('SELECT 1');
+      },
+      redis: async () => {
+        await redis.ping();
+      },
+      apiProvider: null, // verify() de Mailgun o SES en la fase 4
+    },
+    version: packageJson.version,
+  });
+
+  app.addHook('onClose', async () => {
+    await emailQueue.close();
+    await redis.quit();
+    await pool.end();
+  });
+  return { app };
 }

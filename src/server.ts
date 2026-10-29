@@ -1,6 +1,6 @@
 import { ConfigError, loadConfig } from './infrastructure/config';
+import { createApiContainer } from './infrastructure/container';
 import { createLogger } from './infrastructure/logger';
-import { buildApp } from './interfaces/http/app';
 
 function loadApiConfig() {
   try {
@@ -16,7 +16,7 @@ function loadApiConfig() {
 
 const config = loadApiConfig();
 const logger = createLogger({ level: config.logLevel });
-const app = buildApp({ logger });
+const { app } = createApiContainer(config, logger);
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {

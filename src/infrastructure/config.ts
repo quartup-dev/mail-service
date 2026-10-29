@@ -60,7 +60,14 @@ const serverFields = {
   SMTP_SOCKET_TIMEOUT_MS: positiveInt(30_000),
 };
 
+// Opciones de reintento de los jobs: las fija quien encola (la API y el barrido del worker)
+const jobFields = {
+  WORKER_MAX_ATTEMPTS: positiveInt(5),
+  WORKER_BACKOFF_BASE_MS: positiveInt(30_000),
+};
+
 const apiOnlyFields = {
+  ...jobFields,
   PORT: positiveInt(3000),
   ALLOWED_FROM_DOMAINS: commaList,
   API_KEY_PEPPER: key32,
@@ -77,8 +84,7 @@ const workerOnlyFields = {
   WORKER_API_CONCURRENCY: positiveInt(10),
   WORKER_API_RATE_LIMIT_PER_SECOND: positiveInt(10),
   WORKER_SMTP_CONCURRENCY: positiveInt(10),
-  WORKER_MAX_ATTEMPTS: positiveInt(5),
-  WORKER_BACKOFF_BASE_MS: positiveInt(30_000),
+  ...jobFields,
   SWEEP_INTERVAL_MS: positiveInt(60_000),
   STALE_PENDING_AFTER_MS: positiveInt(600_000),
   PENDING_MAX_AGE_MS: positiveInt(86_400_000),
@@ -242,6 +248,7 @@ const schemas = {
       rateLimitDefaultPerMinute: env.RATE_LIMIT_DEFAULT_PER_MINUTE,
       maxBodyBytes: env.MAX_BODY_BYTES,
       maxAttachmentsBytes: env.MAX_ATTACHMENTS_BYTES,
+      jobs: { maxAttempts: env.WORKER_MAX_ATTEMPTS, backoffBaseMs: env.WORKER_BACKOFF_BASE_MS },
     })),
   worker: z
     .preprocess(
