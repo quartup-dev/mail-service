@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AttemptRecord, EmailRepository } from '../../src/application/ports/email-repository';
+import type {
+  AttemptRecord,
+  EmailRepository,
+  StoredEvent,
+} from '../../src/application/ports/email-repository';
 import { messageFrom } from '../support/email-messages';
 import { apiRequest, smtpRequest } from '../support/email-requests';
 import type { FakeClock } from '../support/fake-clock';
@@ -95,7 +99,9 @@ export function describeEmailRepositoryContract(
       it('creates a new message when another client uses the same idempotency key', async () => {
         await repository.create(createInput({ clientId: 'billing', idempotencyKey: 'key-1' }));
 
-        const other = await repository.create(createInput({ clientId: 'crm', idempotencyKey: 'key-1' }));
+        const other = await repository.create(
+          createInput({ clientId: 'crm', idempotencyKey: 'key-1' }),
+        );
 
         expect(other.created).toBe(true);
         expect(other.email.clientId).toBe('crm');
@@ -132,7 +138,9 @@ export function describeEmailRepositoryContract(
         expect(
           (await repository.findByProviderMessageId('mailgun', '20261029.abc@mg.example.com'))?.id,
         ).toBe(email.id);
-        expect(await repository.findByProviderMessageId('ses', '20261029.abc@mg.example.com')).toBeNull();
+        expect(
+          await repository.findByProviderMessageId('ses', '20261029.abc@mg.example.com'),
+        ).toBeNull();
       });
     });
 
@@ -206,7 +214,12 @@ export function describeEmailRepositoryContract(
 
       it('setRecipientStatuses does not move a recipient back to a lower rank', async () => {
         const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
-        await repository.advanceRecipientStatus(email.id, 'a@dominio.com', 'delivered', clock.now());
+        await repository.advanceRecipientStatus(
+          email.id,
+          'a@dominio.com',
+          'delivered',
+          clock.now(),
+        );
 
         await repository.setRecipientStatuses(email.id, [
           { email: 'a@dominio.com', status: 'accepted' },
@@ -265,7 +278,12 @@ export function describeEmailRepositoryContract(
         const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
 
         expect(
-          await repository.advanceRecipientStatus(email.id, 'x@dominio.com', 'delivered', clock.now()),
+          await repository.advanceRecipientStatus(
+            email.id,
+            'x@dominio.com',
+            'delivered',
+            clock.now(),
+          ),
         ).toBe(false);
         expect(
           await repository.advanceRecipientStatus(
@@ -275,6 +293,120 @@ export function describeEmailRepositoryContract(
             clock.now(),
           ),
         ).toBe(false);
+      });
+    });
+
+    describe('findPending', () => {
+      const MINUTE = 60_000;
+
+      it('returns queued and sending messages created before the date, oldest first', async () => {
+        const queued = await repository.create(createInput());
+        clock.advance(MINUTE);
+        const sending = await repository.create(createInput());
+        await repository.updateStatus(sending.email.id, 'sending');
+        clock.advance(MINUTE);
+        const sent = await repository.create(createInput());
+        await repository.updateStatus(sent.email.id, 'sent');
+        clock.advance(MINUTE);
+        await repository.create(createInput()); // demasiado reciente
+
+        const pending = await repository.findPending({ createdBefore: clock.now() }, 10);
+
+        expect(pending.map((email) => email.id)).toEqual([queued.email.id, sending.email.id]);
+      });
+
+      it('filters by last update', async () => {
+        const stale = await repository.create(createInput());
+        const active = await repository.create(createInput());
+        clock.advance(10 * MINUTE);
+        await repository.updateStatus(active.email.id, 'sending');
+
+        const pending = await repository.findPending({ updatedBefore: clock.now() }, 10);
+
+        expect(pending.map((email) => email.id)).toEqual([stale.email.id]);
+      });
+
+      it('returns at most the limit', async () => {
+        for (let i = 0; i < 3; i++) await repository.create(createInput());
+        clock.advance(MINUTE);
+
+        expect(await repository.findPending({ createdBefore: clock.now() }, 2)).toHaveLength(2);
+      });
+    });
+
+    describe('retention', () => {
+      const DAY = 86_400_000;
+      const FAR_FUTURE = new Date('2100-01-01T00:00:00.000Z');
+
+      const event = (emailId: string | null): StoredEvent => ({
+        emailId,
+        recipient: 'cliente@dominio.com',
+        provider: 'mailgun',
+        type: 'delivered',
+        raw: { event: 'delivered' },
+        occurredAt: clock.now(),
+        receivedAt: clock.now(),
+      });
+
+      const createFinal = async () => {
+        const { email } = await repository.create(createInput());
+        await repository.updateStatus(email.id, 'sent');
+        return email;
+      };
+
+      it('deleteEvents removes events received before the date, up to the limit', async () => {
+        await repository.recordEvent(event(null));
+        await repository.recordEvent(event(null));
+        await repository.recordEvent(event(null));
+        clock.advance(DAY);
+        await repository.recordEvent(event(null));
+
+        expect(await repository.deleteEvents(clock.now(), 2)).toBe(2);
+        expect(await repository.deleteEvents(clock.now(), 2)).toBe(1);
+        expect(await repository.deleteEvents(FAR_FUTURE, 10)).toBe(1);
+      });
+
+      it('clearPayloads empties the payload of final messages before the date, up to the limit', async () => {
+        const first = await createFinal();
+        const second = await createFinal();
+        const pending = await repository.create(createInput());
+        clock.advance(DAY);
+        const recent = await createFinal();
+
+        expect(await repository.clearPayloads(clock.now(), 1)).toBe(1);
+        expect(await repository.clearPayloads(clock.now(), 10)).toBe(1);
+        expect(await repository.clearPayloads(clock.now(), 10)).toBe(0);
+
+        const payloads = await Promise.all(
+          [first, second, pending.email, recent].map(
+            async (e) => (await repository.findById(e.id))?.payload,
+          ),
+        );
+        expect(payloads.map((payload) => payload === null)).toEqual([true, true, false, false]);
+      });
+
+      it('deleteFinalEmails removes final messages created before the date, with their events', async () => {
+        const old = await createFinal();
+        await repository.recordEvent(event(old.id));
+        const pending = await repository.create(createInput());
+        clock.advance(DAY);
+        const recent = await createFinal();
+        await repository.recordEvent(event(recent.id));
+
+        expect(await repository.deleteFinalEmails(clock.now(), 10)).toBe(1);
+
+        expect(await repository.findById(old.id)).toBeNull();
+        expect(await repository.findById(pending.email.id)).not.toBeNull();
+        expect(await repository.findById(recent.id)).not.toBeNull();
+        expect(await repository.deleteEvents(FAR_FUTURE, 10)).toBe(1);
+      });
+
+      it('deleteFinalEmails processes at most the limit', async () => {
+        for (let i = 0; i < 3; i++) await createFinal();
+        clock.advance(DAY);
+
+        expect(await repository.deleteFinalEmails(clock.now(), 2)).toBe(2);
+        expect(await repository.deleteFinalEmails(clock.now(), 2)).toBe(1);
       });
     });
   });

@@ -9,16 +9,18 @@ import type {
 } from '../../../application/ports/email-repository';
 import {
   canAdvanceRecipientStatus,
+  FINAL_EMAIL_STATUSES,
   recipientsOf,
   type EmailStatus,
   type ProviderName,
   type RecipientStatus,
 } from '../../../domain/email';
 
-const notImplemented = () => Promise.reject(new Error('Not implemented'));
+const PENDING_STATUSES: readonly EmailStatus[] = ['queued', 'sending'];
 
 export class InMemoryEmailRepository implements EmailRepository {
   private readonly emails = new Map<string, StoredEmail>();
+  private events: StoredEvent[] = [];
 
   constructor(private readonly clock: Clock) {}
 
@@ -115,22 +117,50 @@ export class InMemoryEmailRepository implements EmailRepository {
     return true;
   }
 
-  findPending(
-    _filter: { createdBefore?: Date; updatedBefore?: Date },
-    _limit: number,
+  async findPending(
+    filter: { createdBefore?: Date; updatedBefore?: Date },
+    limit: number,
   ): Promise<StoredEmail[]> {
-    return notImplemented();
+    const { createdBefore, updatedBefore } = filter;
+    return [...this.emails.values()]
+      .filter((email) => PENDING_STATUSES.includes(email.status))
+      .filter((email) => !createdBefore || email.createdAt < createdBefore)
+      .filter((email) => !updatedBefore || email.updatedAt < updatedBefore)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .slice(0, limit)
+      .map((email) => structuredClone(email));
   }
-  recordEvent(_event: StoredEvent): Promise<void> {
-    return notImplemented();
+  async recordEvent(event: StoredEvent): Promise<void> {
+    this.events.push(structuredClone(event));
   }
-  clearPayloads(_finalBefore: Date, _limit: number): Promise<number> {
-    return notImplemented();
+
+  async clearPayloads(finalBefore: Date, limit: number): Promise<number> {
+    const expired = [...this.emails.values()]
+      .filter((email) => isFinal(email) && email.payload !== null && email.updatedAt < finalBefore)
+      .slice(0, limit);
+    for (const email of expired) email.payload = null;
+    return expired.length;
   }
-  deleteEvents(_receivedBefore: Date, _limit: number): Promise<number> {
-    return notImplemented();
+
+  async deleteEvents(receivedBefore: Date, limit: number): Promise<number> {
+    const expired = new Set(
+      this.events.filter((event) => event.receivedAt < receivedBefore).slice(0, limit),
+    );
+    this.events = this.events.filter((event) => !expired.has(event));
+    return expired.size;
   }
-  deleteFinalEmails(_createdBefore: Date, _limit: number): Promise<number> {
-    return notImplemented();
+
+  async deleteFinalEmails(createdBefore: Date, limit: number): Promise<number> {
+    const expired = [...this.emails.values()]
+      .filter((email) => isFinal(email) && email.createdAt < createdBefore)
+      .slice(0, limit);
+    const expiredIds = new Set(expired.map((email) => email.id));
+    for (const id of expiredIds) this.emails.delete(id);
+    this.events = this.events.filter((event) => !event.emailId || !expiredIds.has(event.emailId));
+    return expired.length;
   }
+}
+
+function isFinal(email: StoredEmail): boolean {
+  return FINAL_EMAIL_STATUSES.includes(email.status);
 }
