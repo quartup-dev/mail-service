@@ -93,6 +93,7 @@ Además del stack de CLAUDE.md:
 
 *Configuración (`loadConfig(kind, env)`; `kind`: `api`, `worker`, `keys-cli`, `suppressions-cli`)*
 - [ ] `api` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.
+- [ ] `worker` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.
 - [ ] Sin `DATABASE_URL` falla en los cuatro procesos, y el error nombra la variable.
 - [ ] `REDIS_URL` es obligatoria en `api` y `worker`, no en los CLIs.
 - [ ] `SMTP_CREDENTIALS_ENCRYPTION_KEY` es obligatoria en `api` y `worker`, no en los CLIs.

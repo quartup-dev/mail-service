@@ -69,6 +69,22 @@ const apiOnlyFields = {
   MAX_ATTACHMENTS_BYTES: positiveInt(10_485_760),
 };
 
+const workerOnlyFields = {
+  WORKER_QUEUES: commaList.transform((queues) => (queues.length > 0 ? queues : ['api', 'smtp'])),
+  WORKER_HEALTH_PORT: positiveInt(3001),
+  WORKER_API_CONCURRENCY: positiveInt(10),
+  WORKER_API_RATE_LIMIT_PER_SECOND: positiveInt(10),
+  WORKER_SMTP_CONCURRENCY: positiveInt(10),
+  WORKER_MAX_ATTEMPTS: positiveInt(5),
+  WORKER_BACKOFF_BASE_MS: positiveInt(30_000),
+  SWEEP_INTERVAL_MS: positiveInt(60_000),
+  STALE_PENDING_AFTER_MS: positiveInt(600_000),
+  PENDING_MAX_AGE_MS: positiveInt(86_400_000),
+  PAYLOAD_RETENTION_DAYS: positiveInt(7),
+  EVENTS_RETENTION_DAYS: positiveInt(90),
+  MESSAGE_RETENTION_DAYS: positiveInt(365),
+};
+
 type CommonEnv = z.output<z.ZodObject<typeof commonFields>>;
 type ServerEnv = z.output<z.ZodObject<typeof serverFields>>;
 
@@ -123,11 +139,28 @@ const schemas = {
       maxAttachmentsBytes: env.MAX_ATTACHMENTS_BYTES,
     })),
   worker: z
-    .object({ ...commonFields, ...serverFields })
+    .object({ ...commonFields, ...serverFields, ...workerOnlyFields })
     .superRefine(checkServerRules)
     .transform((env) => ({
       ...toCommon(env),
       ...toServer(env),
+      worker: {
+        queues: env.WORKER_QUEUES,
+        healthPort: env.WORKER_HEALTH_PORT,
+        apiConcurrency: env.WORKER_API_CONCURRENCY,
+        apiRateLimitPerSecond: env.WORKER_API_RATE_LIMIT_PER_SECOND,
+        smtpConcurrency: env.WORKER_SMTP_CONCURRENCY,
+        maxAttempts: env.WORKER_MAX_ATTEMPTS,
+        backoffBaseMs: env.WORKER_BACKOFF_BASE_MS,
+      },
+      maintenance: {
+        sweepIntervalMs: env.SWEEP_INTERVAL_MS,
+        stalePendingAfterMs: env.STALE_PENDING_AFTER_MS,
+        pendingMaxAgeMs: env.PENDING_MAX_AGE_MS,
+        payloadRetentionDays: env.PAYLOAD_RETENTION_DAYS,
+        eventsRetentionDays: env.EVENTS_RETENTION_DAYS,
+        messageRetentionDays: env.MESSAGE_RETENTION_DAYS,
+      },
     })),
   'keys-cli': z.object({ ...commonFields, API_KEY_PEPPER: key32 }).transform((env) => ({
     ...toCommon(env),

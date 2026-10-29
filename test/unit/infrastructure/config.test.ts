@@ -115,6 +115,36 @@ describe('loadConfig', () => {
     );
   });
 
+  it('loads a minimal worker environment and applies defaults', () => {
+    const config = loadConfig('worker', workerEnv());
+
+    expect(config).toMatchObject({
+      nodeEnv: 'development',
+      logLevel: 'info',
+      databaseUrl: 'postgres://mail:mail@localhost:5432/mail',
+      redisUrl: 'redis://localhost:6379',
+      mailApiProvider: undefined,
+      worker: {
+        queues: ['api', 'smtp'],
+        healthPort: 3001,
+        apiConcurrency: 10,
+        apiRateLimitPerSecond: 10,
+        smtpConcurrency: 10,
+        maxAttempts: 5,
+        backoffBaseMs: 30_000,
+      },
+      maintenance: {
+        sweepIntervalMs: 60_000,
+        stalePendingAfterMs: 600_000,
+        pendingMaxAgeMs: 86_400_000,
+        payloadRetentionDays: 7,
+        eventsRetentionDays: 90,
+        messageRetentionDays: 365,
+      },
+    });
+    expect(config.smtp.poolMaxConnections).toBe(5);
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
