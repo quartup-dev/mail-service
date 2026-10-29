@@ -104,7 +104,52 @@ export const EmailStatusResponseSchema = z
     updatedAt: timestamp,
     sentAt: timestamp.nullable(),
   })
-  .meta({ id: 'EmailStatusResponse', description: 'Estado de envío y de entrega de un mensaje' });
+  .meta({
+    id: 'EmailStatusResponse',
+    description: 'Estado de envío y de entrega de un mensaje',
+    examples: [
+      {
+        id: '0192f0c4-5b1e-7c3a-9d2e-4f6a8b0c1d2e',
+        status: 'sent',
+        transport: 'api',
+        provider: 'mailgun',
+        providerMessageId: '20261029.abc@mg.example.com',
+        smtp: null,
+        errorCode: null,
+        errorMessage: null,
+        recipients: [
+          {
+            email: 'a@dominio.com',
+            kind: 'to',
+            status: 'delivered',
+            updatedAt: '2026-10-29T10:00:05.000Z',
+          },
+          {
+            email: 'b@dominio.com',
+            kind: 'cc',
+            status: 'bounced',
+            updatedAt: '2026-10-29T10:00:07.000Z',
+          },
+        ],
+        deliverySummary: { delivered: 1, bounced: 1 },
+        attempts: [
+          {
+            attempt: 1,
+            transport: 'api',
+            provider: 'mailgun',
+            outcome: 'success',
+            code: null,
+            message: null,
+            durationMs: 240,
+            createdAt: '2026-10-29T10:00:01.000Z',
+          },
+        ],
+        createdAt: '2026-10-29T10:00:00.000Z',
+        updatedAt: '2026-10-29T10:00:01.000Z',
+        sentAt: '2026-10-29T10:00:01.000Z',
+      },
+    ],
+  });
 
 export const EmailIdParamsSchema = z.object({ id: z.uuid().describe('Identificador del mensaje') });
 
@@ -239,7 +284,34 @@ export const EmailRequestSchema = z
       }
     }
   })
-  .meta({ id: 'EmailRequest', description: 'Petición de envío de un correo' });
+  .meta({
+    id: 'EmailRequest',
+    description: 'Petición de envío de un correo',
+    examples: [
+      {
+        transport: {
+          type: 'smtp',
+          smtp: {
+            host: 'smtp.example.com',
+            port: 587,
+            auth: { user: 'notificaciones@example.com', pass: '••••••' },
+          },
+        },
+        from: { email: 'notificaciones@example.com', name: 'Example' },
+        to: [{ email: 'cliente@dominio.com' }],
+        subject: 'Bienvenido',
+        html: '<p>Hola</p>',
+        text: 'Hola',
+      },
+      {
+        transport: { type: 'api' },
+        from: { email: 'notificaciones@example.com' },
+        to: [{ email: 'cliente@dominio.com' }],
+        subject: 'Bienvenido',
+        text: 'Hola',
+      },
+    ],
+  });
 
 export const EmailRequestHeadersSchema = z.object({
   'idempotency-key': z

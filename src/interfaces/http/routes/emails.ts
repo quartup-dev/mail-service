@@ -16,7 +16,10 @@ import {
   EmailStatusResponseSchema,
 } from '../schemas/emails';
 import { ErrorResponseSchema } from '../schemas/errors';
+import { RequestIdHeadersSchema } from '../schemas/request-id';
 
+// Un objeto nuevo por ruta: uno compartido aparecería como ancla y alias en el YAML
+const bearerAuth = () => [{ bearerAuth: [] }];
 const RATE_LIMIT_WINDOW_MS = 60_000; // ventana fija de un minuto por cliente
 
 export interface EmailRoutesOptions {
@@ -53,7 +56,12 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
     '/v1/emails',
     {
       schema: {
-        headers: EmailRequestHeadersSchema,
+        summary: 'Solicita el envío de un correo',
+        description:
+          'Valida la petición, guarda el mensaje y lo encola. El envío es asíncrono: consulta su estado con GET /v1/emails/{id}.',
+        tags: ['emails'],
+        security: bearerAuth(),
+        headers: EmailRequestHeadersSchema.extend(RequestIdHeadersSchema.shape),
         body: EmailRequestSchema,
         response: {
           202: EmailAcceptedSchema.describe('Mensaje creado y encolado'),
@@ -94,9 +102,13 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
     '/v1/emails/:id',
     {
       schema: {
+        summary: 'Consulta el estado de envío y de entrega de un mensaje',
+        tags: ['emails'],
+        security: bearerAuth(),
+        headers: RequestIdHeadersSchema,
         params: EmailIdParamsSchema,
         response: {
-          200: EmailStatusResponseSchema,
+          200: EmailStatusResponseSchema.describe('Estado del mensaje'),
           400: ErrorResponseSchema.describe(
             'Identificador con formato inválido (VALIDATION_ERROR)',
           ),
