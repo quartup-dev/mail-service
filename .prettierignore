@@ -5,3 +5,4 @@ docs/
 bun.lock
 docker/dev-certs/
 drizzle/
+openapi.yaml

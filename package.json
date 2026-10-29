@@ -24,8 +24,8 @@
     "test:integration": "NODE_EXTRA_CA_CERTS=./docker/dev-certs/ca.pem vitest run --project integration",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
-    "openapi:export": "echo 'Pendiente: fase 3' && exit 1",
-    "openapi:check": "echo 'Pendiente: fase 3' && exit 1",
+    "openapi:export": "tsx scripts/export-openapi.ts",
+    "openapi:check": "tsx scripts/check-openapi.ts",
     "keys": "tsx --env-file-if-exists=.env scripts/keys.ts",
     "suppressions": "echo 'Pendiente: fase 5' && exit 1",
     "dev:certs": "bash scripts/dev-certs.sh"
