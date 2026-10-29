@@ -961,8 +961,8 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [ ] El cliente se crea con `maxAttempts: 1` y la región configurada.
 
 *Integración (Mailpit)*
-- [ ] El correo llega por STARTTLS en el 587 con asunto, cuerpos, adjuntos y `X-Mail-Service-Id`.
-- [ ] En un proceso hijo sin `NODE_EXTRA_CA_CERTS`, el envío falla con `PermanentProviderError` de certificado.
+- [x] El correo llega por STARTTLS en el 587 con asunto, cuerpos, adjuntos y `X-Mail-Service-Id`.
+- [x] En un proceso hijo sin `NODE_EXTRA_CA_CERTS`, el envío falla con `PermanentProviderError` de certificado.
 
 ---
 
