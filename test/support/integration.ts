@@ -24,11 +24,12 @@ export async function recreateDatabase(name: string): Promise<string> {
 }
 
 // Deja las tablas vacías y crea los clientes que usan los tests (emails.client_id es FK)
-export async function resetTables(db: Database): Promise<void> {
+export async function resetTables(db: Database, { seedClients = true } = {}): Promise<void> {
   await db.execute(sql`
     TRUNCATE email_events, email_attempts, email_recipients, emails, suppressions, api_keys, api_clients
     RESTART IDENTITY CASCADE
   `);
+  if (!seedClients) return;
   const now = new Date('2026-01-01T00:00:00.000Z');
   await db.insert(apiClients).values(
     TEST_CLIENT_IDS.map((id) => ({
