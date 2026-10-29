@@ -910,11 +910,11 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 **Casos de prueba:**
 
 *Mapeo común a MIME (Nodemailer y SES)*
-- [ ] `from`, `to`, `cc`, `bcc` y `replyTo` conservan nombre y dirección.
-- [ ] Asunto, `text` y `html`.
-- [ ] Adjuntos en base64 con nombre y tipo; los que tienen `contentId` llevan su `cid`.
-- [ ] Cabeceras personalizadas y `X-Mail-Service-Id` con el id interno.
-- [ ] Sin acceso a ficheros ni URLs en el contenido de los adjuntos.
+- [x] `from`, `to`, `cc`, `bcc` y `replyTo` conservan nombre y dirección.
+- [x] Asunto, `text` y `html`.
+- [x] Adjuntos en base64 con nombre y tipo; los que tienen `contentId` llevan su `cid`.
+- [x] Cabeceras personalizadas y `X-Mail-Service-Id` con el id interno.
+- [x] Sin acceso a ficheros ni URLs en el contenido de los adjuntos.
 
 *Clasificación SMTP*
 - [ ] Respuestas 4xx (421, 450, 451, 452) → transitorio, con el código de respuesta.
