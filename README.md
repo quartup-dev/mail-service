@@ -62,6 +62,57 @@ Servicios de desarrollo:
 | Mailpit web                         | 8025              |
 | Health del worker                   | 3001              |
 
+## Probar los envíos
+
+### SMTP contra Mailpit
+
+El worker verifica siempre el certificado del servidor SMTP. Para confiar en la CA local de Mailpit, arráncalo con `NODE_EXTRA_CA_CERTS`, que Node solo lee al arrancar. `SMTP_ALLOWED_PRIVATE_HOSTS=mailpit,localhost` (valor de `.env.example`) permite usar Mailpit aunque resuelva a una IP privada.
+
+```bash
+NODE_EXTRA_CA_CERTS=./docker/dev-certs/ca.pem bun run dev:worker
+
+curl -X POST http://localhost:3000/v1/emails \
+  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
+  -d '{
+    "transport": { "type": "smtp", "smtp": { "host": "localhost", "port": 587,
+      "auth": { "user": "prueba", "pass": "cualquiera" } } },
+    "from": { "email": "notificaciones@example.com" },
+    "to": [{ "email": "cliente@dominio.com" }],
+    "subject": "Prueba", "text": "Hola"
+  }'
+```
+
+El correo aparece en http://localhost:8025 y `GET /v1/emails/<id>` pasa a `sent`. El cliente necesita el transporte `smtp` y el dominio `example.com` permitidos (`bun run keys client:create ... --transports smtp,api --from-domains example.com`).
+
+### Mailgun y SES con credenciales reales
+
+Los adaptadores de Mailgun y SES se prueban con tests unitarios que simulan el cliente de cada librería. Contra el proveedor real se prueban a mano con una cuenta de pruebas: el dominio del remitente tiene que estar verificado en el proveedor, y en las cuentas _sandbox_ también los destinatarios.
+
+**Mailgun.** En `.env`:
+
+```dotenv
+MAIL_API_PROVIDER=mailgun
+MAILGUN_API_KEY=...            # clave de envío del dominio
+MAILGUN_DOMAIN=mg.example.com
+MAILGUN_REGION=eu              # o us, según dónde esté el dominio
+MAILGUN_WEBHOOK_SIGNING_KEY=...   # la API la exige; los webhooks llegan en la fase 5
+```
+
+**SES.** Las credenciales salen de la cadena estándar del SDK de AWS (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, rol de la instancia...). En `.env`:
+
+```dotenv
+MAIL_API_PROVIDER=ses
+AWS_REGION=eu-west-1
+SES_CONFIGURATION_SET=         # opcional; necesario para recibir eventos por SNS
+SES_SNS_TOPIC_ARNS=arn:aws:sns:eu-west-1:123456789012:mail-events   # la API lo exige
+```
+
+Después, reinicia API y worker y envía con `"transport": { "type": "api" }` (el cliente necesita el transporte `api`). Qué comprobar:
+
+- `GET /v1/emails/<id>` pasa a `sent` con `provider` y `providerMessageId`, y el correo llega con sus adjuntos, cabeceras y la cabecera `X-Mail-Service-Id`.
+- Con credenciales erróneas, el mensaje queda en `failed` sin reintentos (`MAILGUN_HTTP_401` o `SES_HTTP_403`).
+- En los intentos de `GET` se ve el código de cada error: los transitorios (`..._HTTP_429`, `..._NETWORK_ERROR`, `SES_TooManyRequestsException`...) se reintentan con _backoff_.
+
 ## Decisiones
 
 Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
@@ -123,3 +174,22 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 - **`SmtpHostGuard`**: resuelve con `dns.lookup` (como el resto del sistema, incluye `/etc/hosts` y el DNS de Docker) y conecta a la primera dirección. En IPv6 solo admite unicast global (`2000::/3`), sin documentación, Teredo ni 6to4. `SMTP_ALLOWED_PRIVATE_HOSTS` compara nombres exactos sin distinguir mayúsculas.
 - **Keys**: el `keyId` tiene el formato `k_<año>_<mes>_<6 hex>`. Las keys caducadas no cuentan para el máximo de dos activas. `client:create` admite por defecto ambos transportes.
 - **La comprobación de `openapi.yaml` vive en `scripts/lib/`**, no en `src/`, porque usa el validador, que es dependencia de desarrollo. `ajv` y `ajv-formats` se añaden como dependencias de desarrollo para el test de contrato de las respuestas.
+
+### Fase 4: proveedores reales
+
+- **SES siempre con `Content.Raw`** (cambio acordado sobre el plan, que pedía `Content.Simple` sin adjuntos ni cabeceras propias). `X-Mail-Service-Id` va en todos los mensajes, y así hay un solo camino: el MIME lo genera `MailComposer` con el mismo mapeo que el envío SMTP, que codifica los nombres no ASCII y las cabeceras. `Destination` se pasa siempre explícito, porque `Bcc` no va en las cabeceras, y sin las listas vacías.
+- **Mailgun exige `to`.** Si la supresión deja `to` vacío con destinatarios en `cc` o `bcc`, el adaptador falla sin llamar a la API con `PermanentProviderError` y código `MAILGUN_TO_REQUIRED`; el mensaje queda en `failed`. SES envía sin `To`.
+- **Códigos de error guardados en los intentos**: `SMTP_<respuesta>` (`SMTP_550`), `SMTP_AUTH_FAILED`, `SMTP_TLS_CERTIFICATE_INVALID`, `SMTP_RECIPIENTS_REJECTED`, `SMTP_NETWORK_ERROR`, `SMTP_<código de Nodemailer>` y `SMTP_ERROR`; `MAILGUN_HTTP_<estado>`, `MAILGUN_NETWORK_ERROR`, `MAILGUN_TO_REQUIRED` y `MAILGUN_ERROR`; `SES_<nombre del error>`, `SES_HTTP_<estado>`, `SES_NETWORK_ERROR` y `SES_ERROR`.
+- **Clasificación SMTP.** Nodemailer entrega los fallos de certificado como `ESOCKET` con el código de Node en `originalCode`: se reconocen por ese código. Una respuesta 4xx gana a `EENVELOPE`: si todos los destinatarios se rechazan y alguno con 4xx (p. ej. _greylisting_), se reintenta. `EAUTH` es permanente aunque la respuesta sea 4xx. Un error sin código (los envíos en cola de un pool que se cierra) es transitorio; cualquier otro código de Nodemailer (`EMESSAGE`, `EPROTOCOL`, `ETLS`...), permanente.
+- **Errores de red de Mailgun.** `mailgun.js` entrega los fallos sin respuesta con estado 400 y el código de error como mensaje (`ECONNRESET`, `ECONNABORTED`, `ERR_NETWORK`...). Un 400 cuyo mensaje tiene esa forma se trata como error de red, transitorio.
+- **Errores de SES fuera de la tabla.** `$retryable` del SDK, 408, 429 y 5xx, transitorios; el resto de 4xx, permanente (p. ej. credenciales erróneas, `SES_HTTP_403`). Sin estado HTTP, los códigos de red de Node y `TimeoutError` son transitorios; cualquier otro error local, permanente.
+- **Pools SMTP sin re-encolados propios** (`maxRequeues: 0`): los reintentos los gestiona solo BullMQ.
+- **Caché de transportes SMTP**: el TTL cuenta desde el último uso, de modo que un servidor con tráfico conserva su pool. Al llenarse se expulsa el usado hace más tiempo. Al expulsar un transporte se cierra: los envíos en curso terminan y los que esperaban en su cola fallan como transitorios. El worker cierra todos los pools en el apagado.
+- **Tags.** En Mailgun van como `o:tag`. En SES, cada tag es un `EmailTag` con valor `true` y los caracteres que SES no admite (fuera de `[A-Za-z0-9_-]`) sustituidos por `_`, sin repetir nombres, junto al tag `messageId`. SMTP no tiene un lugar estándar para los tags y no los envía; siguen guardados con el mensaje.
+- **Imágenes inline en Mailgun.** Mailgun usa el nombre de fichero como `cid`, así que los adjuntos con `contentId` se envían con ese `contentId` como nombre.
+- **`providerMessageId` de Mailgun sin `<>`**, igual que llega en los webhooks. El de SMTP se guarda tal como lo devuelve el servidor.
+- **Timeouts de los clientes HTTP**: 30 s por petición en Mailgun (`mailgun.js` no pone ninguno por defecto) y en SES, más 10 s de conexión en SES. Son constantes, sin variables de entorno.
+- **`form-data` en Mailgun** en lugar del `FormData` nativo: con el nativo, `mailgun.js` pierde el `contentType` de los adjuntos.
+- **Sin `verify()` del proveedor en `/ready` de la API**: la API solo tiene las credenciales de los webhooks, no las de envío.
+- **`@types/nodemailer` retirado**: Nodemailer 10 incluye sus propios tipos.
+- **Los tests de Mailpit** usan `localhost` (incluido en el certificado de desarrollo) y conectan a `127.0.0.1`. El test sin la CA local lanza `test/support/send-to-mailpit.ts` en un proceso hijo sin `NODE_EXTRA_CA_CERTS`.

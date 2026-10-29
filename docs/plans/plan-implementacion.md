@@ -18,7 +18,7 @@
 | 1 | Dominio y casos de uso | Completada |
 | 2 | Persistencia, colas y worker | Completada |
 | 3 | API HTTP y autenticación | Completada |
-| 4 | Proveedores reales | En curso |
+| 4 | Proveedores reales | Completada |
 | 5 | Webhooks y supresión | Pendiente |
 | 6 | Producción | Pendiente |
 
@@ -901,11 +901,11 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - Credenciales por la cadena estándar del SDK. `ConfigurationSetName` desde `SES_CONFIGURATION_SET` para recibir eventos.
 
 **Aceptación:**
-- [ ] Tests unitarios de cada adaptador simulando el cliente (sin red), con cada fila de la tabla de clasificación y la regla por defecto.
-- [ ] `SmtpSender` crea el transporte con la IP validada y `tls.servername` igual al host original; un cambio de IP genera una entrada de caché nueva; la DKIM se pasa por mensaje.
-- [ ] E2E contra Mailpit (STARTTLS en el 587, verificación activa con la CA local): el correo llega con asunto, cuerpo y adjuntos correctos.
-- [ ] Sin la CA local, el envío falla con error permanente de certificado. Como Node solo lee `NODE_EXTRA_CA_CERTS` al arrancar, este test lanza un **proceso hijo** sin esa variable que intenta el envío e informa del resultado. No se añade ninguna opción para inyectar CAs en `SmtpSender`.
-- [ ] Mailgun y SES quedan documentados en el README para probarlos manualmente con credenciales reales.
+- [x] Tests unitarios de cada adaptador simulando el cliente (sin red), con cada fila de la tabla de clasificación y la regla por defecto. *(La fila "host bloqueado por `SmtpHostGuard`" la cubren los tests de `ProcessEmailJob` desde la fase 1: el caso de uso convierte `SmtpHostNotAllowedError` en `PermanentProviderError`.)*
+- [x] `SmtpSender` crea el transporte con la IP validada y `tls.servername` igual al host original; un cambio de IP genera una entrada de caché nueva; la DKIM se pasa por mensaje.
+- [x] E2E contra Mailpit (STARTTLS en el 587, verificación activa con la CA local): el correo llega con asunto, cuerpo y adjuntos correctos.
+- [x] Sin la CA local, el envío falla con error permanente de certificado. Como Node solo lee `NODE_EXTRA_CA_CERTS` al arrancar, este test lanza un **proceso hijo** sin esa variable que intenta el envío e informa del resultado. No se añade ninguna opción para inyectar CAs en `SmtpSender`.
+- [x] Mailgun y SES quedan documentados en el README para probarlos manualmente con credenciales reales.
 
 **Casos de prueba:**
 
