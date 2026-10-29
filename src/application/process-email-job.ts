@@ -3,6 +3,7 @@ import {
   recipientsOf,
   type Address,
   type EmailMessage,
+  type ProviderName,
   type SmtpServerConfig,
 } from '../domain/email';
 import {
@@ -15,6 +16,7 @@ import {
 import type { Clock } from './ports/clock';
 import type { EmailApiProvider } from './ports/email-api-provider';
 import type { AttemptRecord, EmailRepository, StoredEmail } from './ports/email-repository';
+import type { Logger } from './ports/logger';
 import type { SecretBox } from './ports/secret-box';
 import type { SendResult } from './ports/send-result';
 import type { SmtpHostGuard } from './ports/smtp-host-guard';
@@ -29,6 +31,7 @@ export interface ProcessEmailJobDeps {
   smtpHostGuard: SmtpHostGuard;
   secretBox: SecretBox;
   clock: Clock;
+  logger: Logger;
 }
 
 export interface ProcessEmailJobInput {
@@ -86,6 +89,7 @@ export class ProcessEmailJob {
       smtpConfigEncrypted: null,
     });
     await emails.setRecipientStatuses(email.id, recipientOutcomes(message, result));
+    this.deps.logger.info(logContext(email, input, result.provider), 'Email sent');
   }
 
   // Solo con api: la supresión es global y protege la reputación de la cuenta del proveedor.
@@ -164,16 +168,22 @@ export class ProcessEmailJob {
     error: unknown,
   ): Promise<void> {
     const permanent = error instanceof PermanentProviderError;
+    const willRetry = !permanent && input.attempt < input.maxAttempts;
     const code = errorCodeOf(error);
     const message = error instanceof Error ? error.message : String(error);
+    const provider = error instanceof ProviderError ? error.provider : this.providerOf(email);
     await this.recordAttempt(email, input, startedAt, {
-      provider: error instanceof ProviderError ? error.provider : this.providerOf(email),
+      provider,
       outcome: permanent ? 'permanent_error' : 'transient_error',
       code,
       message,
     });
+    this.deps.logger.warn(
+      { ...logContext(email, input, provider), errorCode: code, willRetry },
+      'Email send attempt failed',
+    );
 
-    if (permanent || input.attempt >= input.maxAttempts) {
+    if (!willRetry) {
       await this.fail(email, code, message);
     } else {
       await this.deps.emails.updateStatus(email.id, 'queued');
@@ -208,6 +218,23 @@ export class ProcessEmailJob {
   private providerOf(email: StoredEmail) {
     return email.transport === 'smtp' ? 'smtp' : (this.deps.apiProvider?.name ?? null);
   }
+}
+
+// requestId enlaza los logs del worker con la petición HTTP que creó el mensaje.
+// Las direcciones de correo no se registran (solo en debug, según CLAUDE.md)
+function logContext(
+  email: StoredEmail,
+  input: ProcessEmailJobInput,
+  provider: ProviderName | null,
+) {
+  return {
+    messageId: email.id,
+    clientId: email.clientId,
+    requestId: email.requestId,
+    transport: email.transport,
+    provider,
+    attempt: input.attempt,
+  };
 }
 
 function errorCodeOf(error: unknown): string {

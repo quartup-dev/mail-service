@@ -42,6 +42,7 @@ function setup() {
     smtpHostGuard,
     secretBox,
     clock,
+    logger: new FakeLogger(),
   });
 
   const send = async (request: EmailRequest) => {

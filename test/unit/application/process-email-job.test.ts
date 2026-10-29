@@ -54,9 +54,11 @@ function setup({ withApiProvider = true, workerSecretBox }: SetupOptions = {}) {
     requestHashPepper: Buffer.alloc(32, 3),
   });
 
+  const logger = new FakeLogger();
   const useCase = new ProcessEmailJob({
     emails,
     suppressions,
+    logger,
     apiProvider: withApiProvider ? apiProvider : null,
     smtpSender,
     smtpHostGuard,
@@ -70,7 +72,17 @@ function setup({ withApiProvider = true, workerSecretBox }: SetupOptions = {}) {
   const process = (messageId: string, attempt = 1) =>
     useCase.execute({ messageId, attempt, maxAttempts: MAX_ATTEMPTS });
 
-  return { clock, emails, suppressions, apiProvider, smtpSender, smtpHostGuard, queue, process };
+  return {
+    clock,
+    emails,
+    suppressions,
+    apiProvider,
+    smtpSender,
+    smtpHostGuard,
+    logger,
+    queue,
+    process,
+  };
 }
 
 describe('ProcessEmailJob', () => {
@@ -364,6 +376,55 @@ describe('ProcessEmailJob', () => {
         errorCode: 'API_TRANSPORT_NOT_CONFIGURED',
         attempts: [],
       });
+    });
+  });
+
+  describe('logging', () => {
+    it('logs a successful send with the message context', async () => {
+      const { queue, process, logger } = setup();
+      const id = await queue();
+
+      await process(id, 2);
+
+      expect(logger.entries).toEqual([
+        {
+          level: 'info',
+          message: 'Email sent',
+          bindings: {
+            messageId: id,
+            clientId: 'billing',
+            requestId: 'req-1',
+            transport: 'api',
+            provider: 'mailgun',
+            attempt: 2,
+          },
+        },
+      ]);
+    });
+
+    it('logs a failed attempt with the message context and the error code', async () => {
+      const { queue, process, logger, smtpSender } = setup();
+      const id = await queue(smtpRequest());
+      smtpSender.failNextWith(new TransientProviderError('Try again later', 'smtp', '451'));
+
+      await expect(process(id)).rejects.toBeInstanceOf(TransientProviderError);
+
+      expect(logger.entries).toEqual([
+        {
+          level: 'warn',
+          message: 'Email send attempt failed',
+          bindings: {
+            messageId: id,
+            clientId: 'billing',
+            requestId: 'req-1',
+            transport: 'smtp',
+            provider: 'smtp',
+            attempt: 1,
+            errorCode: '451',
+            willRetry: true,
+          },
+        },
+      ]);
     });
   });
 });
