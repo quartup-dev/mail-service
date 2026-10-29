@@ -110,13 +110,13 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 
 ### Fase 3: API HTTP y autenticación
 
-- **Esquemas de petición con sufijo `Input` en OpenAPI** (`EmailRequestInput`, `AddressInput`...). `fastify-type-provider-zod` emite cada esquema con nombre en dos variantes, entrada y salida; las respuestas usan los nombres sin sufijo (`EmailAccepted`, `ErrorResponse`...).
+- **Componentes de OpenAPI sin variantes sobrantes.** `fastify-type-provider-zod` emite cada esquema con nombre dos veces (entrada `XInput` y salida `X`). Al generar la especificación se eliminan los componentes que ninguna ruta usa y, si solo se usa la variante de entrada, recupera el nombre sin sufijo (`EmailRequest`, `Address`...).
 - **`/health` solo documenta el 200.** Responde siempre que el proceso esté vivo; el 503 es de `/ready`.
 - **Cabeceras de petición en minúsculas en la especificación** (`idempotency-key`, `x-request-id`): Fastify exige nombres en minúsculas en los esquemas de cabeceras.
 - **`X-Request-Id` recibido** se acepta si cumple `[A-Za-z0-9._:-]{8,128}`; si no, se genera un UUID.
 - **Rate limit tolerante a fallos de Redis** (`skipOnError`): si Redis no responde, la petición pasa sin límite. Para 3-4 servicios internos es preferible a rechazar envíos. Las respuestas incluyen además las cabeceras `x-ratelimit-*` del plugin.
 - **La API lee `WORKER_MAX_ATTEMPTS` y `WORKER_BACKOFF_BASE_MS`**: las opciones de reintento van en cada job y las fija quien encola, que casi siempre es la API.
-- **Conexión a Redis de la API sin cola offline**: si Redis no responde, encolar falla enseguida, la petición responde `queued` y el barrido encola el mensaje después.
+- **API con Redis caído**: encolar falla enseguida si la conexión está caída (y, si no, a los 5 s); la petición responde `queued` y el barrido encola el mensaje después. El rate limit deja pasar las peticiones. La conexión de la API no tiene cola offline, el cierre usa `disconnect()` si la conexión no está abierta, y los errores de conexión de ioredis y BullMQ van al log en lugar de a la consola.
 - **Límite de adjuntos comprobado en la ruta**, no en el esquema: así el esquema con nombre no depende de `MAX_ATTACHMENTS_BYTES` y la especificación generada es la misma en cualquier entorno.
 - **Cabeceras reservadas**: `From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Sender`, `Subject`, `Date`, `Message-ID`, `MIME-Version`, `Content-Type`, `Content-Transfer-Encoding`, `Content-Disposition`, `Return-Path`, `DKIM-Signature` y `X-Mail-Service-Id`, sin distinguir mayúsculas. Los nombres de cabecera solo admiten letras, dígitos y guiones.
 - **Otros errores 4xx de Fastify** (JSON mal formado, tipo de contenido no admitido) se responden como 400 `VALIDATION_ERROR`.

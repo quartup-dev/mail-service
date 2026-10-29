@@ -980,6 +980,7 @@ Variables de entorno validadas con Zod al arrancar. Cada proceso valida solo lo 
 | `SMTP_CREDENTIALS_ENCRYPTION_KEY` | ✓ (cifra) | ✓ (descifra) | — |
 | `API_KEY_PEPPER` | ✓ | — | ✓ (`keys`) |
 | Variables del proveedor de `MAIL_API_PROVIDER` | ✓ (webhooks) | ✓ (envío) | — |
+| `WORKER_MAX_ATTEMPTS`, `WORKER_BACKOFF_BASE_MS` | ✓ (encola) | ✓ (encola en el barrido) | — |
 
 Reglas adicionales:
 - `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS`, si se define, debe ser distinta de la activa.
@@ -1037,8 +1038,8 @@ WORKER_HEALTH_PORT=3001
 WORKER_API_CONCURRENCY=10
 WORKER_API_RATE_LIMIT_PER_SECOND=10  # ajustar a la cuota del proveedor
 WORKER_SMTP_CONCURRENCY=10
-WORKER_MAX_ATTEMPTS=5
-WORKER_BACKOFF_BASE_MS=30000
+WORKER_MAX_ATTEMPTS=5                # también lo lee la API: fija los reintentos al encolar
+WORKER_BACKOFF_BASE_MS=30000         # también lo lee la API; mismo valor en API y worker
 
 # Mantenimiento
 SWEEP_INTERVAL_MS=60000
