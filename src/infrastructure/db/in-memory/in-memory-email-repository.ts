@@ -8,6 +8,7 @@ import type {
   StoredEvent,
 } from '../../../application/ports/email-repository';
 import {
+  canAdvanceRecipientStatus,
   recipientsOf,
   type EmailStatus,
   type ProviderName,
@@ -69,29 +70,51 @@ export class InMemoryEmailRepository implements EmailRepository {
     const email = this.emails.get(id);
     return email ? structuredClone(email) : null;
   }
-  findByProviderMessageId(_p: ProviderName, _id: string): Promise<StoredEmail | null> {
-    return notImplemented();
+  async findByProviderMessageId(
+    provider: ProviderName,
+    providerMessageId: string,
+  ): Promise<StoredEmail | null> {
+    const email = [...this.emails.values()].find(
+      (candidate) =>
+        candidate.provider === provider && candidate.providerMessageId === providerMessageId,
+    );
+    return email ? structuredClone(email) : null;
   }
-  updateStatus(_id: string, _status: EmailStatus, _patch?: EmailStatusPatch): Promise<void> {
-    return notImplemented();
+
+  async updateStatus(id: string, status: EmailStatus, patch: EmailStatusPatch = {}): Promise<void> {
+    const email = this.emails.get(id);
+    if (!email) return;
+    Object.assign(email, structuredClone(patch), { status, updatedAt: this.clock.now() });
   }
-  recordAttempt(_id: string, _attempt: AttemptRecord): Promise<void> {
-    return notImplemented();
+
+  async recordAttempt(id: string, attempt: AttemptRecord): Promise<void> {
+    this.emails.get(id)?.attempts.push(structuredClone(attempt));
   }
-  setRecipientStatuses(
-    _id: string,
-    _updates: Array<{ email: string; status: RecipientStatus }>,
+  async setRecipientStatuses(
+    id: string,
+    updates: Array<{ email: string; status: RecipientStatus }>,
   ): Promise<void> {
-    return notImplemented();
+    const now = this.clock.now();
+    for (const { email, status } of updates) this.advance(id, email, status, now);
   }
-  advanceRecipientStatus(
-    _id: string,
-    _email: string,
-    _status: RecipientStatus,
-    _occurredAt: Date,
+
+  async advanceRecipientStatus(
+    id: string,
+    email: string,
+    status: RecipientStatus,
+    occurredAt: Date,
   ): Promise<boolean> {
-    return notImplemented();
+    return this.advance(id, email, status, occurredAt);
   }
+
+  private advance(id: string, email: string, status: RecipientStatus, at: Date): boolean {
+    const recipient = this.emails.get(id)?.recipients.find((r) => r.email === email);
+    if (!recipient || !canAdvanceRecipientStatus(recipient.status, status)) return false;
+    recipient.status = status;
+    recipient.updatedAt = new Date(at);
+    return true;
+  }
+
   findPending(
     _filter: { createdBefore?: Date; updatedBefore?: Date },
     _limit: number,

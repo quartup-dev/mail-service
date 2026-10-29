@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { EmailRepository } from '../../src/application/ports/email-repository';
+import type { AttemptRecord, EmailRepository } from '../../src/application/ports/email-repository';
 import { messageFrom } from '../support/email-messages';
 import { apiRequest, smtpRequest } from '../support/email-requests';
 import type { FakeClock } from '../support/fake-clock';
@@ -117,6 +117,164 @@ export function describeEmailRepositoryContract(
           status: 'queued',
           recipients: [{ status: 'pending' }],
         });
+      });
+    });
+
+    describe('findByProviderMessageId', () => {
+      it('finds a message by provider and provider message id', async () => {
+        const { email } = await repository.create(createInput());
+        await repository.create(createInput());
+        await repository.updateStatus(email.id, 'sent', {
+          provider: 'mailgun',
+          providerMessageId: '20261029.abc@mg.example.com',
+        });
+
+        expect(
+          (await repository.findByProviderMessageId('mailgun', '20261029.abc@mg.example.com'))?.id,
+        ).toBe(email.id);
+        expect(await repository.findByProviderMessageId('ses', '20261029.abc@mg.example.com')).toBeNull();
+      });
+    });
+
+    describe('updateStatus', () => {
+      it('applies the status, the patch and the update time', async () => {
+        const { email } = await repository.create(createInput());
+        clock.advance(1_000);
+
+        await repository.updateStatus(email.id, 'failed', {
+          errorCode: 'EXPIRED',
+          errorMessage: 'Pending for too long',
+          smtpConfigEncrypted: null,
+        });
+
+        expect(await repository.findById(email.id)).toMatchObject({
+          status: 'failed',
+          errorCode: 'EXPIRED',
+          errorMessage: 'Pending for too long',
+          smtpConfigEncrypted: null,
+          createdAt: email.createdAt,
+          updatedAt: clock.now(),
+        });
+      });
+    });
+
+    describe('recordAttempt', () => {
+      it('appends attempts in order', async () => {
+        const { email } = await repository.create(createInput());
+        const attempt = (number: number): AttemptRecord => ({
+          attempt: number,
+          transport: 'api',
+          provider: 'mailgun',
+          outcome: number === 1 ? 'transient_error' : 'success',
+          code: number === 1 ? '429' : null,
+          message: null,
+          durationMs: 120,
+          createdAt: clock.now(),
+        });
+
+        await repository.recordAttempt(email.id, attempt(1));
+        await repository.recordAttempt(email.id, attempt(2));
+
+        expect((await repository.findById(email.id))?.attempts).toEqual([attempt(1), attempt(2)]);
+      });
+    });
+
+    describe('recipient statuses', () => {
+      const twoRecipients = () =>
+        messageFrom(apiRequest({ to: [{ email: 'a@dominio.com' }, { email: 'b@dominio.com' }] }));
+
+      const statusesOf = async (id: string) =>
+        Object.fromEntries(
+          ((await repository.findById(id))?.recipients ?? []).map((r) => [r.email, r.status]),
+        );
+
+      it('setRecipientStatuses advances each recipient and stamps the update time', async () => {
+        const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
+        clock.advance(1_000);
+
+        await repository.setRecipientStatuses(email.id, [
+          { email: 'a@dominio.com', status: 'accepted' },
+          { email: 'b@dominio.com', status: 'rejected' },
+        ]);
+
+        const stored = await repository.findById(email.id);
+        expect(stored?.recipients).toEqual([
+          { email: 'a@dominio.com', kind: 'to', status: 'accepted', updatedAt: clock.now() },
+          { email: 'b@dominio.com', kind: 'to', status: 'rejected', updatedAt: clock.now() },
+        ]);
+      });
+
+      it('setRecipientStatuses does not move a recipient back to a lower rank', async () => {
+        const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
+        await repository.advanceRecipientStatus(email.id, 'a@dominio.com', 'delivered', clock.now());
+
+        await repository.setRecipientStatuses(email.id, [
+          { email: 'a@dominio.com', status: 'accepted' },
+          { email: 'b@dominio.com', status: 'accepted' },
+        ]);
+
+        expect(await statusesOf(email.id)).toEqual({
+          'a@dominio.com': 'delivered',
+          'b@dominio.com': 'accepted',
+        });
+      });
+
+      it('advanceRecipientStatus applies a higher rank and stamps the event time', async () => {
+        const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
+        const occurredAt = new Date('2026-10-29T10:05:00.000Z');
+
+        const applied = await repository.advanceRecipientStatus(
+          email.id,
+          'b@dominio.com',
+          'bounced',
+          occurredAt,
+        );
+
+        expect(applied).toBe(true);
+        expect((await repository.findById(email.id))?.recipients[1]).toEqual({
+          email: 'b@dominio.com',
+          kind: 'to',
+          status: 'bounced',
+          updatedAt: occurredAt,
+        });
+        expect(await statusesOf(email.id)).toMatchObject({ 'a@dominio.com': 'pending' });
+      });
+
+      it('advanceRecipientStatus ignores a lower or equal rank', async () => {
+        const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
+        await repository.advanceRecipientStatus(email.id, 'a@dominio.com', 'bounced', clock.now());
+
+        const lower = await repository.advanceRecipientStatus(
+          email.id,
+          'a@dominio.com',
+          'delivered',
+          clock.now(),
+        );
+        const equal = await repository.advanceRecipientStatus(
+          email.id,
+          'a@dominio.com',
+          'complained',
+          clock.now(),
+        );
+
+        expect([lower, equal]).toEqual([false, false]);
+        expect(await statusesOf(email.id)).toMatchObject({ 'a@dominio.com': 'bounced' });
+      });
+
+      it('advanceRecipientStatus returns false for an unknown recipient or message', async () => {
+        const { email } = await repository.create({ ...createInput(), message: twoRecipients() });
+
+        expect(
+          await repository.advanceRecipientStatus(email.id, 'x@dominio.com', 'delivered', clock.now()),
+        ).toBe(false);
+        expect(
+          await repository.advanceRecipientStatus(
+            '0192f0c4-0000-7000-8000-000000000000',
+            'a@dominio.com',
+            'delivered',
+            clock.now(),
+          ),
+        ).toBe(false);
       });
     });
   });
