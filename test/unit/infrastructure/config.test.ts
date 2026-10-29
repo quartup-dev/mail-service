@@ -181,7 +181,10 @@ describe('loadConfig', () => {
 
   describe('SMTP_ALLOWED_PRIVATE_HOSTS', () => {
     it.each(['api', 'worker'] as const)('is parsed as a trimmed list in %s', (kind) => {
-      const env = { ...validEnvFor[kind](), SMTP_ALLOWED_PRIVATE_HOSTS: ' mailpit , localhost ,, ' };
+      const env = {
+        ...validEnvFor[kind](),
+        SMTP_ALLOWED_PRIVATE_HOSTS: ' mailpit , localhost ,, ',
+      };
 
       expect(loadConfig(kind, env).smtp.allowedPrivateHosts).toEqual(['mailpit', 'localhost']);
     });
@@ -197,9 +200,103 @@ describe('loadConfig', () => {
     });
 
     it.each(['api', 'worker'] as const)('may be empty in production for %s', (kind) => {
-      const env = { ...validEnvFor[kind](), NODE_ENV: 'production', SMTP_ALLOWED_PRIVATE_HOSTS: '' };
+      const env = {
+        ...validEnvFor[kind](),
+        NODE_ENV: 'production',
+        SMTP_ALLOWED_PRIVATE_HOSTS: '',
+      };
 
       expect(loadConfig(kind, env).smtp.allowedPrivateHosts).toEqual([]);
+    });
+  });
+
+  describe('MAIL_API_PROVIDER', () => {
+    const mailgunEnv: Env = {
+      MAIL_API_PROVIDER: 'mailgun',
+      MAILGUN_API_KEY: 'test-mailgun-key',
+      MAILGUN_DOMAIN: 'mg.example.com',
+      MAILGUN_WEBHOOK_SIGNING_KEY: 'test-signing-key',
+    };
+    const sesEnv: Env = {
+      MAIL_API_PROVIDER: 'ses',
+      AWS_REGION: 'eu-west-1',
+      SES_CONFIGURATION_SET: 'mail-service',
+      SES_SNS_TOPIC_ARNS: 'arn:aws:sns:eu-west-1:123456789012:ses-events',
+    };
+
+    it.each(['api', 'worker'] as const)(
+      'leaves the provider undefined in %s when empty',
+      (kind) => {
+        const env = { ...validEnvFor[kind](), MAIL_API_PROVIDER: '' };
+
+        expect(loadConfig(kind, env).mailApiProvider).toBeUndefined();
+      },
+    );
+
+    it.each(['api', 'worker'] as const)('rejects an unknown provider in %s', (kind) => {
+      const env = { ...validEnvFor[kind](), MAIL_API_PROVIDER: 'sendgrid' };
+
+      expect(configErrorOf(kind, env).message).toContain('MAIL_API_PROVIDER');
+    });
+
+    it('loads mailgun webhook settings in api', () => {
+      const config = loadConfig('api', { ...apiEnv(), ...mailgunEnv });
+
+      expect(config.mailApiProvider).toEqual({
+        name: 'mailgun',
+        webhookSigningKey: 'test-signing-key',
+      });
+    });
+
+    it('loads mailgun sending settings in worker with the EU region by default', () => {
+      const config = loadConfig('worker', { ...workerEnv(), ...mailgunEnv });
+
+      expect(config.mailApiProvider).toEqual({
+        name: 'mailgun',
+        apiKey: 'test-mailgun-key',
+        domain: 'mg.example.com',
+        region: 'eu',
+      });
+    });
+
+    it.each([
+      ['api', 'MAILGUN_WEBHOOK_SIGNING_KEY'],
+      ['worker', 'MAILGUN_API_KEY'],
+      ['worker', 'MAILGUN_DOMAIN'],
+    ] as const)('requires %s mailgun variable %s', (kind, variable) => {
+      const env = { ...validEnvFor[kind](), ...mailgunEnv, [variable]: undefined };
+
+      expect(configErrorOf(kind, env).message).toContain(variable);
+    });
+
+    it('loads ses settings in api', () => {
+      const config = loadConfig('api', { ...apiEnv(), ...sesEnv });
+
+      expect(config.mailApiProvider).toEqual({
+        name: 'ses',
+        region: 'eu-west-1',
+        snsTopicArns: ['arn:aws:sns:eu-west-1:123456789012:ses-events'],
+      });
+    });
+
+    it('loads ses settings in worker', () => {
+      const config = loadConfig('worker', { ...workerEnv(), ...sesEnv });
+
+      expect(config.mailApiProvider).toEqual({
+        name: 'ses',
+        region: 'eu-west-1',
+        configurationSet: 'mail-service',
+      });
+    });
+
+    it.each([
+      ['api', 'AWS_REGION'],
+      ['worker', 'AWS_REGION'],
+      ['api', 'SES_SNS_TOPIC_ARNS'],
+    ] as const)('requires %s ses variable %s', (kind, variable) => {
+      const env = { ...validEnvFor[kind](), ...sesEnv, [variable]: undefined };
+
+      expect(configErrorOf(kind, env).message).toContain(variable);
     });
   });
 

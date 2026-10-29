@@ -87,6 +87,79 @@ const workerOnlyFields = {
   MESSAGE_RETENTION_DAYS: positiveInt(365),
 };
 
+const requiredText = z.string().min(1);
+
+// MAIL_API_PROVIDER vacío o ausente se normaliza a 'none' para poder discriminar
+const normalizeProvider = (input: unknown) =>
+  typeof input === 'object' && input !== null
+    ? {
+        ...input,
+        MAIL_API_PROVIDER: (input as Env).MAIL_API_PROVIDER || 'none',
+      }
+    : input;
+
+const noProvider = z.object({ MAIL_API_PROVIDER: z.literal('none') });
+
+// La API solo necesita lo que usan los webhooks; el worker, lo que usa para enviar
+const apiProviderFields = z.discriminatedUnion('MAIL_API_PROVIDER', [
+  noProvider,
+  z.object({
+    MAIL_API_PROVIDER: z.literal('mailgun'),
+    MAILGUN_WEBHOOK_SIGNING_KEY: requiredText,
+  }),
+  z.object({
+    MAIL_API_PROVIDER: z.literal('ses'),
+    AWS_REGION: requiredText,
+    SES_SNS_TOPIC_ARNS: commaList.pipe(z.array(z.string()).min(1)),
+  }),
+]);
+
+const workerProviderFields = z.discriminatedUnion('MAIL_API_PROVIDER', [
+  noProvider,
+  z.object({
+    MAIL_API_PROVIDER: z.literal('mailgun'),
+    MAILGUN_API_KEY: requiredText,
+    MAILGUN_DOMAIN: requiredText,
+    MAILGUN_REGION: z.enum(['eu', 'us']).default('eu'),
+  }),
+  z.object({
+    MAIL_API_PROVIDER: z.literal('ses'),
+    AWS_REGION: requiredText,
+    SES_CONFIGURATION_SET: z.string().optional(),
+  }),
+]);
+
+const toApiProvider = (env: z.output<typeof apiProviderFields>) => {
+  switch (env.MAIL_API_PROVIDER) {
+    case 'none':
+      return undefined;
+    case 'mailgun':
+      return { name: 'mailgun' as const, webhookSigningKey: env.MAILGUN_WEBHOOK_SIGNING_KEY };
+    case 'ses':
+      return { name: 'ses' as const, region: env.AWS_REGION, snsTopicArns: env.SES_SNS_TOPIC_ARNS };
+  }
+};
+
+const toWorkerProvider = (env: z.output<typeof workerProviderFields>) => {
+  switch (env.MAIL_API_PROVIDER) {
+    case 'none':
+      return undefined;
+    case 'mailgun':
+      return {
+        name: 'mailgun' as const,
+        apiKey: env.MAILGUN_API_KEY,
+        domain: env.MAILGUN_DOMAIN,
+        region: env.MAILGUN_REGION,
+      };
+    case 'ses':
+      return {
+        name: 'ses' as const,
+        region: env.AWS_REGION,
+        configurationSet: env.SES_CONFIGURATION_SET || undefined,
+      };
+  }
+};
+
 type CommonEnv = z.output<z.ZodObject<typeof commonFields>>;
 type ServerEnv = z.output<z.ZodObject<typeof serverFields>>;
 type WorkerEnv = z.output<z.ZodObject<typeof workerOnlyFields>>;
@@ -137,7 +210,6 @@ const toServer = (env: ServerEnv) => ({
   redisUrl: env.REDIS_URL,
   smtpEncryptionKey: env.SMTP_CREDENTIALS_ENCRYPTION_KEY,
   smtpEncryptionKeyPrevious: env.SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS,
-  mailApiProvider: undefined,
   smtp: {
     allowedHosts: env.SMTP_ALLOWED_HOSTS,
     allowedPrivateHosts: env.SMTP_ALLOWED_PRIVATE_HOSTS,
@@ -153,11 +225,15 @@ const toServer = (env: ServerEnv) => ({
 
 const schemas = {
   api: z
-    .object({ ...commonFields, ...serverFields, ...apiOnlyFields })
+    .preprocess(
+      normalizeProvider,
+      z.object({ ...commonFields, ...serverFields, ...apiOnlyFields }).and(apiProviderFields),
+    )
     .superRefine(checkServerRules)
     .transform((env) => ({
       ...toCommon(env),
       ...toServer(env),
+      mailApiProvider: toApiProvider(env),
       port: env.PORT,
       allowedFromDomains: env.ALLOWED_FROM_DOMAINS,
       apiKeyPepper: env.API_KEY_PEPPER,
@@ -166,12 +242,16 @@ const schemas = {
       maxAttachmentsBytes: env.MAX_ATTACHMENTS_BYTES,
     })),
   worker: z
-    .object({ ...commonFields, ...serverFields, ...workerOnlyFields })
+    .preprocess(
+      normalizeProvider,
+      z.object({ ...commonFields, ...serverFields, ...workerOnlyFields }).and(workerProviderFields),
+    )
     .superRefine(checkServerRules)
     .superRefine(checkWorkerRules)
     .transform((env) => ({
       ...toCommon(env),
       ...toServer(env),
+      mailApiProvider: toWorkerProvider(env),
       worker: {
         queues: env.WORKER_QUEUES,
         healthPort: env.WORKER_HEALTH_PORT,
