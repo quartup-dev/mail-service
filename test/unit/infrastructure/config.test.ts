@@ -53,6 +53,25 @@ describe('loadConfig', () => {
     expect(error.message).toContain('DATABASE_URL');
   });
 
+  describe.each([
+    { variable: 'REDIS_URL', requiredIn: ['api', 'worker'] },
+    { variable: 'SMTP_CREDENTIALS_ENCRYPTION_KEY', requiredIn: ['api', 'worker'] },
+    { variable: 'API_KEY_PEPPER', requiredIn: ['api', 'keys-cli'] },
+  ])('$variable', ({ variable, requiredIn }) => {
+    it.each(PROCESS_KINDS.filter((kind) => requiredIn.includes(kind)))('is required in %s', (kind) => {
+      const env = { ...validEnvFor[kind](), [variable]: undefined };
+
+      expect(configErrorOf(kind, env).message).toContain(variable);
+    });
+
+    it.each(PROCESS_KINDS.filter((kind) => !requiredIn.includes(kind)))(
+      'is not required in %s',
+      (kind) => {
+        expect(() => loadConfig(kind, validEnvFor[kind]())).not.toThrow();
+      },
+    );
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
