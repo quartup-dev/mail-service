@@ -41,6 +41,10 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     queueEmail: deps.queueEmail,
     getEmailStatus: deps.getEmailStatus,
     maxAttachmentsBytes: deps.limits.maxAttachmentsBytes,
+    rateLimit: {
+      defaultPerMinute: deps.limits.rateLimitDefaultPerMinute,
+      ...(deps.rateLimitRedis && { redis: deps.rateLimitRedis }),
+    },
   });
   return app;
 }

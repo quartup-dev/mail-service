@@ -1,5 +1,7 @@
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { Redis } from 'ioredis';
 import type { GetEmailStatus } from '../../../application/get-email-status';
 import type { ApiClientRepository } from '../../../application/ports/api-client-repository';
 import type { QueueEmail } from '../../../application/queue-email';
@@ -15,11 +17,14 @@ import {
 } from '../schemas/emails';
 import { ErrorResponseSchema } from '../schemas/errors';
 
+const RATE_LIMIT_WINDOW_MS = 60_000; // ventana fija de un minuto por cliente
+
 export interface EmailRoutesOptions {
   apiClients: ApiClientRepository;
   queueEmail: QueueEmail;
   getEmailStatus: GetEmailStatus;
   maxAttachmentsBytes: number;
+  rateLimit: { defaultPerMinute: number; redis?: Redis };
 }
 
 // Rutas autenticadas por API key: la autenticación va antes que el rate limit
@@ -27,6 +32,22 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
   const app = scope.withTypeProvider<ZodTypeProvider>();
   app.decorateRequest('client', null);
   app.addHook('onRequest', authenticate(options.apiClients));
+  // Va después de la autenticación (los hooks de la instancia corren antes que los de ruta que
+  // añade el plugin): una petición sin key válida no consume el límite de nadie
+  await app.register(rateLimit, {
+    hook: 'onRequest',
+    timeWindow: RATE_LIMIT_WINDOW_MS,
+    nameSpace: 'mail-service:rate-limit:',
+    ...(options.rateLimit.redis && { redis: options.rateLimit.redis }),
+    // Si Redis falla se deja pasar la petición: mejor sin límite que sin envíos
+    skipOnError: true,
+    keyGenerator: (request) => clientOf(request).id,
+    max: (request) => clientOf(request).rateLimitPerMinute ?? options.rateLimit.defaultPerMinute,
+    errorResponseBuilder: (_request, context) => {
+      const seconds = Math.ceil(context.ttl / 1_000);
+      return new ApiError(429, 'RATE_LIMITED', `Rate limit exceeded, retry in ${seconds} seconds`);
+    },
+  });
 
   app.post(
     '/v1/emails',
@@ -41,6 +62,7 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
           ),
           400: ErrorResponseSchema.describe('Petición inválida (VALIDATION_ERROR)'),
           401: ErrorResponseSchema.describe('API key ausente o inválida (UNAUTHORIZED)'),
+          429: ErrorResponseSchema.describe('Límite de peticiones superado (RATE_LIMITED)'),
           403: ErrorResponseSchema.describe(
             'Transporte o dominio de from no permitidos (TRANSPORT_NOT_ALLOWED, FROM_DOMAIN_NOT_ALLOWED)',
           ),
@@ -79,6 +101,7 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
             'Identificador con formato inválido (VALIDATION_ERROR)',
           ),
           401: ErrorResponseSchema.describe('API key ausente o inválida (UNAUTHORIZED)'),
+          429: ErrorResponseSchema.describe('Límite de peticiones superado (RATE_LIMITED)'),
           404: ErrorResponseSchema.describe('Mensaje inexistente o de otro cliente (NOT_FOUND)'),
           500: ErrorResponseSchema.describe('Error interno (INTERNAL_ERROR)'),
         },
