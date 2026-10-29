@@ -74,30 +74,50 @@ describe('OpenAPI document', () => {
     expect(Object.keys(document.paths ?? {}).some((path) => path.startsWith('/docs'))).toBe(false);
   });
 
-  it('declares named schemas as components', () => {
-    expect(Object.keys(schemas())).toEqual(
-      expect.arrayContaining([
-        'EmailRequestInput',
-        'SmtpTransportInput',
-        'ApiTransportInput',
-        'AddressInput',
-        'AttachmentInput',
-        'EmailAccepted',
-        'EmailStatusResponse',
-        'EmailRecipientStatus',
-        'EmailAttempt',
+  it('declares the named schemas as components, without input/output suffixes', () => {
+    expect(Object.keys(schemas()).sort()).toEqual(
+      [
+        'Address',
+        'ApiTransport',
+        'Attachment',
+        'AttemptOutcome',
         'DeliverySummary',
+        'EmailAccepted',
+        'EmailAttempt',
+        'EmailRecipientStatus',
+        'EmailRequest',
         'EmailStatus',
-        'RecipientStatus',
-        'RecipientKind',
-        'TransportType',
-        'ProviderName',
+        'EmailStatusResponse',
+        'ErrorCode',
         'ErrorResponse',
-        'ValidationIssue',
         'HealthResponse',
+        'ProviderName',
         'ReadyResponse',
-      ]) as unknown,
+        'RecipientKind',
+        'RecipientStatus',
+        'SmtpServer',
+        'SmtpTransport',
+        'TransportType',
+        'ValidationIssue',
+      ].sort(),
     );
+  });
+
+  it('only declares components that some route uses', () => {
+    const text = JSON.stringify(document.paths);
+    const referenced = new Set<string>();
+    const pending = [...text.matchAll(/#\/components\/schemas\/(\w+)/g)].map((m) => m[1] ?? '');
+    while (pending.length > 0) {
+      const name = pending.pop() ?? '';
+      if (referenced.has(name)) continue;
+      referenced.add(name);
+      const nested = JSON.stringify(schemas()[name]);
+      pending.push(
+        ...[...nested.matchAll(/#\/components\/schemas\/(\w+)/g)].map((m) => m[1] ?? ''),
+      );
+    }
+
+    expect(Object.keys(schemas()).filter((name) => !referenced.has(name))).toEqual([]);
   });
 
   it('declares ErrorResponse.code as an enum of every error code', () => {
@@ -170,7 +190,7 @@ describe('OpenAPI document', () => {
   });
 
   it('includes examples for both transports and for the status response', () => {
-    const request = schemas().EmailRequestInput as Schema & { examples?: unknown[] };
+    const request = schemas().EmailRequest as Schema & { examples?: unknown[] };
     const status = schemas().EmailStatusResponse as Schema & { examples?: unknown[] };
 
     expect(request.examples).toHaveLength(2);
