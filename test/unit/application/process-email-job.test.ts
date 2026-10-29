@@ -3,7 +3,11 @@ import type { ApiClient } from '../../../src/application/ports/api-client-reposi
 import { ProcessEmailJob } from '../../../src/application/process-email-job';
 import { QueueEmail } from '../../../src/application/queue-email';
 import type { EmailRequest } from '../../../src/domain/email';
-import { PermanentProviderError, TransientProviderError } from '../../../src/domain/errors';
+import {
+  EmailRequestRejectedError,
+  PermanentProviderError,
+  TransientProviderError,
+} from '../../../src/domain/errors';
 import { AesGcmSecretBox } from '../../../src/infrastructure/crypto/aes-gcm-secret-box';
 import { InMemoryEmailRepository } from '../../../src/infrastructure/db/in-memory/in-memory-email-repository';
 import { InMemorySuppressionRepository } from '../../../src/infrastructure/db/in-memory/in-memory-suppression-repository';
@@ -251,12 +255,12 @@ describe('ProcessEmailJob', () => {
       });
     });
 
-    it('fails on a transient error in the last attempt and clears the SMTP configuration', async () => {
+    it('fails on a transient error in the last attempt, clears the SMTP configuration and rethrows', async () => {
       const { queue, process, emails, smtpSender } = setup();
       const id = await queue(smtpRequest());
       smtpSender.failNextWith(new TransientProviderError('Try again later', 'smtp', '451'));
 
-      await process(id, MAX_ATTEMPTS);
+      await expect(process(id, MAX_ATTEMPTS)).rejects.toBeInstanceOf(TransientProviderError);
 
       expect(await emails.findById(id)).toMatchObject({
         status: 'failed',
@@ -346,11 +350,14 @@ describe('ProcessEmailJob', () => {
       });
     });
 
-    it('fails with API_TRANSPORT_NOT_CONFIGURED when the worker has no api provider', async () => {
+    it('fails with API_TRANSPORT_NOT_CONFIGURED when the worker has no api provider and rethrows', async () => {
       const { queue, process, emails } = setup({ withApiProvider: false });
       const id = await queue();
 
-      await process(id);
+      await expect(process(id)).rejects.toMatchObject({
+        constructor: EmailRequestRejectedError,
+        code: 'API_TRANSPORT_NOT_CONFIGURED',
+      });
 
       expect(await emails.findById(id)).toMatchObject({
         status: 'failed',

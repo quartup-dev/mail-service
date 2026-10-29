@@ -357,7 +357,7 @@ export interface ApiClientRepository {
 5. Registrar el intento con `recordAttempt` (transporte, proveedor, resultado, código, duración; con SMTP, el host, nunca las credenciales).
 6. Éxito: `sent` con `providerMessageId`; destinatarios a `accepted` o `rejected` con `setRecipientStatuses`.
 7. Error transitorio con intentos restantes: volver a `queued` y relanzar el error.
-8. Error transitorio en el último intento (`attempt >= maxAttempts`): `failed` con código y motivo.
+8. Error transitorio en el último intento (`attempt >= maxAttempts`): `failed` con código y motivo, y relanzar el error (BullMQ ya no reintenta y registra el job como fallido).
 9. Error permanente: `failed` con código y motivo, y relanzar el `PermanentProviderError`. El consumidor lo convierte en `UnrecoverableError` (fase 2).
 10. En cualquier estado final, borrar la configuración SMTP cifrada (`smtp_config_encrypted = NULL`).
 
@@ -471,13 +471,13 @@ export interface ApiClientRepository {
 - [x] La supresión no se aplica con `smtp`.
 - [x] Un `delivered` registrado antes del resultado del worker no se pisa con `accepted`.
 - [x] Error transitorio con intentos restantes: vuelve a `queued`, registra el intento y relanza.
-- [x] Error transitorio en el último intento: `failed` con código y motivo, y configuración SMTP borrada.
+- [x] Error transitorio en el último intento: `failed` con código y motivo, configuración SMTP borrada y relanza el error.
 - [x] Error permanente: `failed`, configuración SMTP borrada y relanza `PermanentProviderError`.
 - [x] Un error sin clasificar se trata como transitorio.
 - [x] Configuración cifrada con la clave anterior: se descifra y se envía.
 - [x] Clave desconocida: `failed` con `SMTP_CONFIG_UNDECRYPTABLE` como error permanente.
 - [x] Host rechazado por el guard en el worker: `failed` con `SMTP_HOST_NOT_ALLOWED` como error permanente.
-- [x] `api` sin proveedor configurado en el worker: `failed` con `API_TRANSPORT_NOT_CONFIGURED`.
+- [x] `api` sin proveedor configurado en el worker: `failed` con `API_TRANSPORT_NOT_CONFIGURED` y relanza `EmailRequestRejectedError`.
 
 *Flujo completo*
 - [x] `QueueEmail` + `ProcessEmailJob` por `api` termina en `sent`.
@@ -532,7 +532,8 @@ Todas las tablas se crean en esta fase, incluidas las de clientes, porque `email
 - **`emails-smtp`**: concurrencia `WORKER_SMTP_CONCURRENCY`, sin *limiter* global (el ritmo se limita por servidor en el pool SMTP, fase 4).
 - `WORKER_QUEUES=api,smtp` permite arrancar solo una de las dos. La cola `maintenance` la atienden **todos** los procesos worker.
 - Reintentos: `attempts` = `WORKER_MAX_ATTEMPTS` (5), backoff exponencial con jitter y base `WORKER_BACKOFF_BASE_MS` (30 s).
-- El consumidor de emails pasa `attempt` y `maxAttempts` a `ProcessEmailJob` y convierte `PermanentProviderError` en `UnrecoverableError` de BullMQ.
+- El consumidor de emails pasa `attempt` y `maxAttempts` a `ProcessEmailJob` y convierte `PermanentProviderError` y `EmailRequestRejectedError` (p. ej. `API_TRANSPORT_NOT_CONFIGURED` en un worker sin proveedor) en `UnrecoverableError` de BullMQ. `ProcessEmailJob` relanza siempre que el mensaje acaba en `failed` o vuelve a `queued`.
+- `IdGenerator` real en `infrastructure/` con `crypto.randomUUIDv7()` de Node 24, sin dependencias nuevas.
 - El worker lee `request_id` del mensaje y lo añade a sus logs, junto a `messageId`, `clientId`, `transport`, `provider` y `attempt`.
 - **Mantenimiento** con job schedulers de BullMQ (`upsertJobScheduler`) en la cola `maintenance`, para que corran una sola vez por intervalo aunque haya varias réplicas: `SweepPendingEmails` cada `SWEEP_INTERVAL_MS` (60 s) y `ApplyRetention` cada hora.
 - **Health del worker**: servidor mínimo con `node:http` en `WORKER_HEALTH_PORT` (3001), con `/health` (el proceso responde) y `/ready` (PostgreSQL y Redis accesibles y workers en marcha). Durante el apagado, `/ready` responde 503. No se publica fuera del contenedor.
@@ -771,6 +772,7 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 
 - `mailgun.js` con `form-data`; región EU (`https://api.eu.mailgun.net`) o US según `MAILGUN_REGION`.
 - `v:messageId` como variable personalizada.
+- **`to` vacío tras la supresión**: si la supresión elimina todos los destinatarios de `to` pero quedan en `cc`/`bcc`, `ProcessEmailJob` envía con `to` vacío. Consultar en la documentación vigente si Mailgun lo admite (SES admite destinos sin `To`) y decidir cómo lo resuelve cada adaptador. Mientras no se resuelva, el error del proveedor deja el mensaje en `failed`, visible en `GET`.
 
 ### 4.4 SES
 

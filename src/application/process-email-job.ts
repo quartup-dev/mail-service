@@ -6,6 +6,7 @@ import {
   type SmtpServerConfig,
 } from '../domain/email';
 import {
+  EmailRequestRejectedError,
   PermanentProviderError,
   ProviderError,
   SmtpHostNotAllowedError,
@@ -48,8 +49,12 @@ export class ProcessEmailJob {
     if (!email?.payload || isFinalEmailStatus(email.status)) return;
 
     if (email.transport === 'api' && !this.deps.apiProvider) {
-      await this.fail(email, 'API_TRANSPORT_NOT_CONFIGURED', 'The api transport is not configured');
-      return;
+      const error = new EmailRequestRejectedError(
+        'API_TRANSPORT_NOT_CONFIGURED',
+        'The api transport is not configured',
+      );
+      await this.fail(email, error.code, error.message);
+      throw error;
     }
 
     const message =
@@ -64,8 +69,8 @@ export class ProcessEmailJob {
     try {
       result = await this.send(email, message);
     } catch (error) {
-      await this.handleFailure(email, input, startedAt, error);
-      return;
+      await this.recordFailure(email, input, startedAt, error);
+      throw error;
     }
 
     await this.recordAttempt(email, input, startedAt, {
@@ -149,10 +154,10 @@ export class ProcessEmailJob {
     }
   }
 
-  // Permanente: failed y se relanza (el consumidor lo convierte en UnrecoverableError).
-  // Transitorio (o sin clasificar): vuelve a queued y se relanza para que la cola reintente,
-  // salvo en el último intento, que deja failed
-  private async handleFailure(
+  // Permanente o último intento: failed. Transitorio (o sin clasificar) con intentos restantes:
+  // vuelve a queued. En ambos casos el llamador relanza el error: la cola reintenta o registra
+  // el job como fallido (el consumidor convierte los permanentes en UnrecoverableError)
+  private async recordFailure(
     email: StoredEmail,
     input: ProcessEmailJobInput,
     startedAt: Date,
@@ -168,16 +173,11 @@ export class ProcessEmailJob {
       message,
     });
 
-    if (permanent) {
+    if (permanent || input.attempt >= input.maxAttempts) {
       await this.fail(email, code, message);
-      throw error;
+    } else {
+      await this.deps.emails.updateStatus(email.id, 'queued');
     }
-    if (input.attempt >= input.maxAttempts) {
-      await this.fail(email, code, message);
-      return;
-    }
-    await this.deps.emails.updateStatus(email.id, 'queued');
-    throw error;
   }
 
   // Estado final: la configuración SMTP cifrada se borra
