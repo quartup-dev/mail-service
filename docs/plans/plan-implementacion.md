@@ -18,7 +18,7 @@
 | 1 | Dominio y casos de uso | Completada |
 | 2 | Persistencia, colas y worker | Completada |
 | 3 | API HTTP y autenticación | Completada |
-| 4 | Proveedores reales | Pendiente |
+| 4 | Proveedores reales | En curso |
 | 5 | Webhooks y supresión | Pendiente |
 | 6 | Producción | Pendiente |
 
@@ -892,11 +892,12 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - `mailgun.js` con `form-data`; región EU (`https://api.eu.mailgun.net`) o US según `MAILGUN_REGION`.
 - `v:messageId` como variable personalizada.
 - **`to` vacío tras la supresión**: si la supresión elimina todos los destinatarios de `to` pero quedan en `cc`/`bcc`, `ProcessEmailJob` envía con `to` vacío. Consultar en la documentación vigente si Mailgun lo admite (SES admite destinos sin `To`) y decidir cómo lo resuelve cada adaptador. Mientras no se resuelva, el error del proveedor deja el mensaje en `failed`, visible en `GET`.
+  - **Resuelto (2026-10-29):** la API de Mailgun exige `to` (400 "to parameter is missing"). El adaptador lo comprueba antes de llamar y lanza `PermanentProviderError` con código `MAILGUN_TO_REQUIRED`; el mensaje queda en `failed`. SES envía sin `To`.
 
 ### 4.4 SES
 
 - `SESv2Client` con `maxAttempts: 1` (los reintentos los gestiona solo la cola) y `SendEmailCommand`.
-- Con adjuntos o cabeceras personalizadas, construir el MIME con `MailComposer` de Nodemailer y enviar como `Content.Raw`; si no, `Content.Simple`.
+- ~~Con adjuntos o cabeceras personalizadas, construir el MIME con `MailComposer` de Nodemailer y enviar como `Content.Raw`; si no, `Content.Simple`.~~ **Cambio acordado (2026-10-29):** siempre `Content.Raw`, con el MIME de `MailComposer` construido con el mismo mapeo que el envío SMTP. `X-Mail-Service-Id` va en todos los mensajes, y así hay un solo camino que codifica nombres no ASCII y cabeceras. `Destination` se pasa siempre explícito, porque `Bcc` no va en las cabeceras del MIME.
 - Credenciales por la cadena estándar del SDK. `ConfigurationSetName` desde `SES_CONFIGURATION_SET` para recibir eventos.
 
 **Aceptación:**
@@ -905,6 +906,63 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [ ] E2E contra Mailpit (STARTTLS en el 587, verificación activa con la CA local): el correo llega con asunto, cuerpo y adjuntos correctos.
 - [ ] Sin la CA local, el envío falla con error permanente de certificado. Como Node solo lee `NODE_EXTRA_CA_CERTS` al arrancar, este test lanza un **proceso hijo** sin esa variable que intenta el envío e informa del resultado. No se añade ninguna opción para inyectar CAs en `SmtpSender`.
 - [ ] Mailgun y SES quedan documentados en el README para probarlos manualmente con credenciales reales.
+
+**Casos de prueba:**
+
+*Mapeo común a MIME (Nodemailer y SES)*
+- [ ] `from`, `to`, `cc`, `bcc` y `replyTo` conservan nombre y dirección.
+- [ ] Asunto, `text` y `html`.
+- [ ] Adjuntos en base64 con nombre y tipo; los que tienen `contentId` llevan su `cid`.
+- [ ] Cabeceras personalizadas y `X-Mail-Service-Id` con el id interno.
+- [ ] Sin acceso a ficheros ni URLs en el contenido de los adjuntos.
+
+*Clasificación SMTP*
+- [ ] Respuestas 4xx (421, 450, 451, 452) → transitorio, con el código de respuesta.
+- [ ] Respuestas 5xx (550, 553, 554) → permanente.
+- [ ] Autenticación (535 o `EAUTH`) → permanente.
+- [ ] Certificado TLS inválido (CA desconocida, autofirmado, caducado, nombre que no coincide) → permanente.
+- [ ] Todos los destinatarios rechazados (`EENVELOPE`) → permanente; si alguno se rechazó con 4xx, transitorio.
+- [ ] Red: timeouts, `ECONNRESET`, `ECONNREFUSED`, DNS y conexión cerrada → transitorio.
+- [ ] Error sin código (p. ej. pool cerrado) → transitorio; otro código local de Nodemailer → permanente.
+
+*NodemailerSmtpSender (cliente simulado)*
+- [ ] Crea el transporte con la IP validada, `tls.servername` igual al host original y `rejectUnauthorized: true`.
+- [ ] Con una IP literal como host no pone `servername`.
+- [ ] Puerto 465 → `secure: true`; 587 → `secure: false` y `requireTLS: true`.
+- [ ] Pool con `maxConnections`, `rateLimit`, `rateDelta: 1000`, timeouts de la configuración y sin re-encolados propios (`maxRequeues: 0`).
+- [ ] Credenciales en `auth` solo si la petición las trae.
+- [ ] DKIM por mensaje en `sendMail`, nunca en el transporte.
+- [ ] Devuelve `providerMessageId` y la hora del reloj; los rechazados parciales van en `rejectedRecipients`.
+- [ ] Reutiliza el transporte para el mismo host, IP, puerto y credenciales.
+- [ ] Crea una entrada nueva si cambia la IP, el usuario o la contraseña.
+- [ ] Caduca y cierra el transporte sin uso durante el TTL.
+- [ ] Con la caché llena, expulsa y cierra el usado hace más tiempo.
+- [ ] `close()` cierra todos los transportes.
+- [ ] Los errores del transporte salen clasificados como `TransientProviderError` o `PermanentProviderError` del proveedor `smtp`.
+
+*MailgunApiProvider (cliente simulado)*
+- [ ] Mapea remitente, destinatarios con nombre, asunto, cuerpos, `h:Reply-To`, cabeceras `h:`, `o:tag`, `v:messageId` y `h:X-Mail-Service-Id`.
+- [ ] Adjuntos como `attachment` con nombre y tipo; los que tienen `contentId`, como `inline` con ese nombre.
+- [ ] Envía al dominio configurado y devuelve el id sin `<>` y la hora del reloj.
+- [ ] Con `to` vacío lanza `PermanentProviderError` `MAILGUN_TO_REQUIRED` sin llamar a la API.
+- [ ] HTTP 429 y 5xx → transitorio; 400, 401, 403 y 404 → permanente.
+- [ ] Errores de red (que `mailgun.js` entrega con estado 400 y el código de error como mensaje) → transitorio.
+- [ ] Por defecto: 408 → transitorio; otro 4xx y errores locales → permanente.
+- [ ] El cliente usa la URL de la región EU o US.
+
+*SesApiProvider (cliente simulado)*
+- [ ] Envía `Content.Raw` con el MIME del mapeo común, `Destination` con to, cc y bcc, y sin `To` si la supresión lo dejó vacío.
+- [ ] `EmailTags` con `messageId` y los tags del mensaje (caracteres no admitidos sustituidos).
+- [ ] `ConfigurationSetName` solo si está configurado.
+- [ ] Devuelve el `MessageId` y la hora del reloj.
+- [ ] `TooManyRequestsException`, `ThrottlingException`, `LimitExceededException` y 5xx → transitorio.
+- [ ] `MessageRejected`, `MailFromDomainNotVerifiedException`, `AccountSuspendedException`, `SendingPausedException`, `BadRequestException` y `NotFoundException` → permanente.
+- [ ] Por defecto: `$retryable`, red y HTTP 408 → transitorio; otro 4xx y errores locales → permanente.
+- [ ] El cliente se crea con `maxAttempts: 1` y la región configurada.
+
+*Integración (Mailpit)*
+- [ ] El correo llega por STARTTLS en el 587 con asunto, cuerpos, adjuntos y `X-Mail-Service-Id`.
+- [ ] En un proceso hijo sin `NODE_EXTRA_CA_CERTS`, el envío falla con `PermanentProviderError` de certificado.
 
 ---
 
