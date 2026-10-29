@@ -917,13 +917,13 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Sin acceso a ficheros ni URLs en el contenido de los adjuntos.
 
 *Clasificación SMTP*
-- [ ] Respuestas 4xx (421, 450, 451, 452) → transitorio, con el código de respuesta.
-- [ ] Respuestas 5xx (550, 553, 554) → permanente.
-- [ ] Autenticación (535 o `EAUTH`) → permanente.
-- [ ] Certificado TLS inválido (CA desconocida, autofirmado, caducado, nombre que no coincide) → permanente.
-- [ ] Todos los destinatarios rechazados (`EENVELOPE`) → permanente; si alguno se rechazó con 4xx, transitorio.
-- [ ] Red: timeouts, `ECONNRESET`, `ECONNREFUSED`, DNS y conexión cerrada → transitorio.
-- [ ] Error sin código (p. ej. pool cerrado) → transitorio; otro código local de Nodemailer → permanente.
+- [x] Respuestas 4xx (421, 450, 451, 452) → transitorio, con el código de respuesta.
+- [x] Respuestas 5xx (550, 553, 554) → permanente.
+- [x] Autenticación (535 o `EAUTH`) → permanente.
+- [x] Certificado TLS inválido (CA desconocida, autofirmado, caducado, nombre que no coincide) → permanente.
+- [x] Todos los destinatarios rechazados (`EENVELOPE`) → permanente; si alguno se rechazó con 4xx, transitorio.
+- [x] Red: timeouts, `ECONNRESET`, `ECONNREFUSED`, DNS y conexión cerrada → transitorio.
+- [x] Error sin código (p. ej. pool cerrado) → transitorio; otro código local de Nodemailer → permanente.
 
 *NodemailerSmtpSender (cliente simulado)*
 - [ ] Crea el transporte con la IP validada, `tls.servername` igual al host original y `rejectUnauthorized: true`.
