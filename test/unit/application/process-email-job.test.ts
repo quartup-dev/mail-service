@@ -3,6 +3,7 @@ import type { ApiClient } from '../../../src/application/ports/api-client-reposi
 import { ProcessEmailJob } from '../../../src/application/process-email-job';
 import { QueueEmail } from '../../../src/application/queue-email';
 import type { EmailRequest } from '../../../src/domain/email';
+import { PermanentProviderError, TransientProviderError } from '../../../src/domain/errors';
 import { AesGcmSecretBox } from '../../../src/infrastructure/crypto/aes-gcm-secret-box';
 import { InMemoryEmailRepository } from '../../../src/infrastructure/db/in-memory/in-memory-email-repository';
 import { InMemorySuppressionRepository } from '../../../src/infrastructure/db/in-memory/in-memory-suppression-repository';
@@ -17,7 +18,11 @@ import { SequentialIds } from '../../support/sequential-ids';
 const KEY_A = Buffer.alloc(32, 1);
 const MAX_ATTEMPTS = 5;
 
-const CLIENT: ApiClient = { id: 'billing', name: 'Facturación', allowedTransports: ['smtp', 'api'] };
+const CLIENT: ApiClient = {
+  id: 'billing',
+  name: 'Facturación',
+  allowedTransports: ['smtp', 'api'],
+};
 
 interface SetupOptions {
   withApiProvider?: boolean;
@@ -155,5 +160,203 @@ describe('ProcessEmailJob', () => {
 
     expect(apiProvider.sent).toHaveLength(1);
     expect((await emails.findById(id))?.status).toBe('sent');
+  });
+
+  describe('suppression', () => {
+    const threeRecipients = {
+      to: [{ email: 'ok@dominio.com' }, { email: 'Rebote@Dominio.com' }],
+      cc: [{ email: 'queja@dominio.com' }],
+    };
+
+    it('skips suppressed recipients of an api message and sends to the rest', async () => {
+      const { queue, process, emails, suppressions, apiProvider } = setup();
+      await suppressions.add('rebote@dominio.com', 'bounce', 'mailgun');
+      await suppressions.add('queja@dominio.com', 'complaint', 'mailgun');
+      const id = await queue(apiRequest(threeRecipients));
+
+      await process(id);
+
+      expect(apiProvider.sent).toHaveLength(1);
+      expect(apiProvider.sent[0]).toMatchObject({ to: [{ email: 'ok@dominio.com' }], cc: [] });
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'sent',
+        recipients: [
+          { email: 'ok@dominio.com', status: 'accepted' },
+          { email: 'rebote@dominio.com', status: 'suppressed' },
+          { email: 'queja@dominio.com', status: 'suppressed' },
+        ],
+      });
+    });
+
+    it('marks an api message as suppressed without sending it when every recipient is suppressed', async () => {
+      const { queue, process, emails, suppressions, apiProvider } = setup();
+      await suppressions.add('rebote@dominio.com', 'bounce', 'mailgun');
+      const id = await queue(apiRequest({ to: [{ email: 'rebote@dominio.com' }] }));
+
+      await process(id);
+
+      expect(apiProvider.sent).toEqual([]);
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'suppressed',
+        recipients: [{ email: 'rebote@dominio.com', status: 'suppressed' }],
+        attempts: [],
+      });
+    });
+
+    it('does not apply to SMTP messages', async () => {
+      const { queue, process, emails, suppressions, smtpSender } = setup();
+      await suppressions.add('rebote@dominio.com', 'bounce', 'mailgun');
+      const id = await queue(smtpRequest({ to: [{ email: 'rebote@dominio.com' }] }));
+
+      await process(id);
+
+      expect(smtpSender.sent).toHaveLength(1);
+      expect((await emails.findById(id))?.recipients).toMatchObject([{ status: 'accepted' }]);
+    });
+  });
+
+  it('keeps a delivered status that arrived before the worker stored its result', async () => {
+    const { queue, process, emails, clock } = setup();
+    const id = await queue(apiRequest({ to: [{ email: 'cliente@dominio.com' }] }));
+    await emails.advanceRecipientStatus(id, 'cliente@dominio.com', 'delivered', clock.now());
+
+    await process(id);
+
+    expect((await emails.findById(id))?.recipients).toMatchObject([{ status: 'delivered' }]);
+  });
+
+  describe('failures', () => {
+    const transient = () => new TransientProviderError('Too many requests', 'mailgun', '429');
+    const permanent = () => new PermanentProviderError('Mailbox unavailable', 'smtp', '550');
+
+    it('requeues on a transient error with attempts left, records it and rethrows', async () => {
+      const { queue, process, emails, apiProvider } = setup();
+      const id = await queue();
+      apiProvider.failNextWith(transient());
+
+      await expect(process(id, 1)).rejects.toBeInstanceOf(TransientProviderError);
+
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'queued',
+        attempts: [
+          {
+            attempt: 1,
+            transport: 'api',
+            provider: 'mailgun',
+            outcome: 'transient_error',
+            code: '429',
+            message: 'Too many requests',
+          },
+        ],
+      });
+    });
+
+    it('fails on a transient error in the last attempt and clears the SMTP configuration', async () => {
+      const { queue, process, emails, smtpSender } = setup();
+      const id = await queue(smtpRequest());
+      smtpSender.failNextWith(new TransientProviderError('Try again later', 'smtp', '451'));
+
+      await process(id, MAX_ATTEMPTS);
+
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'failed',
+        errorCode: '451',
+        errorMessage: 'Try again later',
+        smtpConfigEncrypted: null,
+      });
+    });
+
+    it('fails on a permanent error, clears the SMTP configuration and rethrows', async () => {
+      const { queue, process, emails, smtpSender } = setup();
+      const id = await queue(smtpRequest());
+      smtpSender.failNextWith(permanent());
+
+      await expect(process(id, 1)).rejects.toBeInstanceOf(PermanentProviderError);
+
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'failed',
+        errorCode: '550',
+        errorMessage: 'Mailbox unavailable',
+        smtpConfigEncrypted: null,
+        attempts: [{ outcome: 'permanent_error', code: '550' }],
+      });
+    });
+
+    it('treats an unclassified error as transient', async () => {
+      const { queue, process, emails, apiProvider } = setup();
+      const id = await queue();
+      const unexpected = new Error('socket hang up');
+      apiProvider.failNextWith(unexpected);
+
+      await expect(process(id, 1)).rejects.toBe(unexpected);
+
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'queued',
+        attempts: [
+          { outcome: 'transient_error', code: 'UNEXPECTED_ERROR', message: 'socket hang up' },
+        ],
+      });
+    });
+
+    it('decrypts a configuration encrypted with the previous key and sends', async () => {
+      const { queue, process, emails } = setup({
+        workerSecretBox: new AesGcmSecretBox({ active: Buffer.alloc(32, 2), previous: KEY_A }),
+      });
+      const id = await queue(smtpRequest());
+
+      await process(id);
+
+      expect((await emails.findById(id))?.status).toBe('sent');
+    });
+
+    it('fails permanently with SMTP_CONFIG_UNDECRYPTABLE when the key is unknown', async () => {
+      const { queue, process, emails, smtpSender } = setup({
+        workerSecretBox: new AesGcmSecretBox({ active: Buffer.alloc(32, 2) }),
+      });
+      const id = await queue(smtpRequest());
+
+      await expect(process(id)).rejects.toMatchObject({
+        constructor: PermanentProviderError,
+        code: 'SMTP_CONFIG_UNDECRYPTABLE',
+      });
+
+      expect(smtpSender.sent).toEqual([]);
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'SMTP_CONFIG_UNDECRYPTABLE',
+        smtpConfigEncrypted: null,
+      });
+    });
+
+    it('fails permanently with SMTP_HOST_NOT_ALLOWED when the guard rejects the host before sending', async () => {
+      const { queue, process, emails, smtpSender, smtpHostGuard } = setup();
+      const id = await queue(smtpRequest());
+      smtpHostGuard.block('smtp.example.com');
+
+      await expect(process(id)).rejects.toMatchObject({
+        constructor: PermanentProviderError,
+        code: 'SMTP_HOST_NOT_ALLOWED',
+      });
+
+      expect(smtpSender.sent).toEqual([]);
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'SMTP_HOST_NOT_ALLOWED',
+        smtpConfigEncrypted: null,
+      });
+    });
+
+    it('fails with API_TRANSPORT_NOT_CONFIGURED when the worker has no api provider', async () => {
+      const { queue, process, emails } = setup({ withApiProvider: false });
+      const id = await queue();
+
+      await process(id);
+
+      expect(await emails.findById(id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'API_TRANSPORT_NOT_CONFIGURED',
+        attempts: [],
+      });
+    });
   });
 });
