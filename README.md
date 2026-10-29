@@ -25,6 +25,22 @@ curl http://localhost:3000/health
 curl http://localhost:3001/ready
 ```
 
+Clientes y API keys (la key solo se muestra al crearla):
+
+```bash
+bun run keys client:create --id billing --name "Facturación" --transports api --from-domains example.com
+bun run keys key:create --client billing [--expires-at 2027-10-29]
+bun run keys key:revoke --client billing --key-id k_2026_10_a1b2c3
+bun run keys list
+```
+
+La API se documenta en `http://localhost:3000/docs`. El contrato para los servicios consumidores es `openapi.yaml`, generado desde las rutas:
+
+```bash
+bun run openapi:export      # regenera openapi.yaml
+bun run openapi:check       # falla si openapi.yaml no está al día o no es válido
+```
+
 Comprobaciones:
 
 ```bash
@@ -39,7 +55,7 @@ Servicios de desarrollo:
 
 | Servicio                            | Puerto en el host |
 | ----------------------------------- | ----------------- |
-| API                                 | 3000              |
+| API (documentación en `/docs`)      | 3000              |
 | PostgreSQL                          | 55432             |
 | Redis                               | 56379             |
 | Mailpit SMTP (STARTTLS obligatorio) | 587               |
@@ -91,3 +107,19 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 - **Tamaño de lote de barrido y retención fijo en 1000** y retención cada hora, sin variables de entorno.
 - **Adaptadores SMTP provisionales.** Hasta la fase 3 (`SmtpHostGuard` con DNS) y la 4 (envío con Nodemailer, Mailgun y SES), el worker usa un guard y un sender que fallan siempre con error permanente, y no tiene proveedor de API: un mensaje que llegue al worker acaba en `failed`. La API aún no crea mensajes, así que no afecta a ningún envío real.
 - **Tests de integración**: un _global setup_ recrea la base `mail_test` y aplica las migraciones; cada test vacía las tablas y usa un prefijo de Redis propio. Los ficheros de integración se ejecutan en serie.
+
+### Fase 3: API HTTP y autenticación
+
+- **Esquemas de petición con sufijo `Input` en OpenAPI** (`EmailRequestInput`, `AddressInput`...). `fastify-type-provider-zod` emite cada esquema con nombre en dos variantes, entrada y salida; las respuestas usan los nombres sin sufijo (`EmailAccepted`, `ErrorResponse`...).
+- **`/health` solo documenta el 200.** Responde siempre que el proceso esté vivo; el 503 es de `/ready`.
+- **Cabeceras de petición en minúsculas en la especificación** (`idempotency-key`, `x-request-id`): Fastify exige nombres en minúsculas en los esquemas de cabeceras.
+- **`X-Request-Id` recibido** se acepta si cumple `[A-Za-z0-9._:-]{8,128}`; si no, se genera un UUID.
+- **Rate limit tolerante a fallos de Redis** (`skipOnError`): si Redis no responde, la petición pasa sin límite. Para 3-4 servicios internos es preferible a rechazar envíos. Las respuestas incluyen además las cabeceras `x-ratelimit-*` del plugin.
+- **La API lee `WORKER_MAX_ATTEMPTS` y `WORKER_BACKOFF_BASE_MS`**: las opciones de reintento van en cada job y las fija quien encola, que casi siempre es la API.
+- **Conexión a Redis de la API sin cola offline**: si Redis no responde, encolar falla enseguida, la petición responde `queued` y el barrido encola el mensaje después.
+- **Límite de adjuntos comprobado en la ruta**, no en el esquema: así el esquema con nombre no depende de `MAX_ATTACHMENTS_BYTES` y la especificación generada es la misma en cualquier entorno.
+- **Cabeceras reservadas**: `From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Sender`, `Subject`, `Date`, `Message-ID`, `MIME-Version`, `Content-Type`, `Content-Transfer-Encoding`, `Content-Disposition`, `Return-Path`, `DKIM-Signature` y `X-Mail-Service-Id`, sin distinguir mayúsculas. Los nombres de cabecera solo admiten letras, dígitos y guiones.
+- **Otros errores 4xx de Fastify** (JSON mal formado, tipo de contenido no admitido) se responden como 400 `VALIDATION_ERROR`.
+- **`SmtpHostGuard`**: resuelve con `dns.lookup` (como el resto del sistema, incluye `/etc/hosts` y el DNS de Docker) y conecta a la primera dirección. En IPv6 solo admite unicast global (`2000::/3`), sin documentación, Teredo ni 6to4. `SMTP_ALLOWED_PRIVATE_HOSTS` compara nombres exactos sin distinguir mayúsculas.
+- **Keys**: el `keyId` tiene el formato `k_<año>_<mes>_<6 hex>`. Las keys caducadas no cuentan para el máximo de dos activas. `client:create` admite por defecto ambos transportes.
+- **La comprobación de `openapi.yaml` vive en `scripts/lib/`**, no en `src/`, porque usa el validador, que es dependencia de desarrollo. `ajv` y `ajv-formats` se añaden como dependencias de desarrollo para el test de contrato de las respuestas.

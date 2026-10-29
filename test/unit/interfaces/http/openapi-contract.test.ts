@@ -18,7 +18,7 @@ describe('responses match openapi.yaml', () => {
   beforeAll(async () => {
     document = (await SwaggerParser.parse('openapi.yaml')) as OpenAPIV3_1.Document;
     ajv = new Ajv2020({ strict: false, allErrors: true });
-    addFormats.default(ajv);
+    addFormats(ajv);
     ajv.addSchema({ $id: DOCUMENT_ID, components: document.components });
   });
 

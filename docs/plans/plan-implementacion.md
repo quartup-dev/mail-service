@@ -17,7 +17,7 @@
 | 0 | Andamiaje | Completada |
 | 1 | Dominio y casos de uso | Completada |
 | 2 | Persistencia, colas y worker | Completada |
-| 3 | API HTTP y autenticación | En curso |
+| 3 | API HTTP y autenticación | Completada |
 | 4 | Proveedores reales | Pendiente |
 | 5 | Webhooks y supresión | Pendiente |
 | 6 | Producción | Pendiente |
@@ -776,88 +776,88 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - Se ejecuta al cerrar cada fase desde la 3 y en CI.
 
 **Aceptación:**
-- [ ] Repositorio de clientes: key válida, key con `_` y `-` en el secreto, revocada, caducada, cliente desactivado, `clientId` inexistente.
-- [ ] CLI: creación de cliente y key, revocación con efecto inmediato en la API sin reiniciarla, rechazo de una tercera key activa, dos `key:create` simultáneos que no superan el máximo.
-- [ ] La base de datos solo contiene hashes; ninguna key en claro en tablas ni logs.
-- [ ] Integración de la API: 400 por esquema (incluidas cabeceras reservadas y saltos de línea), 413, 401, 403 por transporte y por dominio, 429, aislamiento entre clientes en `GET`, 202 por ambos transportes, 200 y 409 de idempotencia, 404, 422 `SMTP_HOST_NOT_ALLOWED` y `API_TRANSPORT_NOT_CONFIGURED`.
-- [ ] Las rutas de webhooks no exigen API key ni consumen rate limit, y una petición sin autenticar a `/v1/emails` tampoco lo consume.
-- [ ] `SmtpHostGuard`: IPv4/IPv6 privadas, IPv4 mapeadas en IPv6, loopback, link-local, hostname que resuelve a IP privada (también si solo una de varias lo es), puertos no permitidos, lista blanca con comodines.
-- [ ] Ninguna respuesta ni log contiene la contraseña SMTP.
-- [ ] `/docs` muestra la especificación.
-- [ ] `bun run openapi:export` genera `openapi.yaml` sin servicios levantados ni variables de entorno, y dos ejecuciones seguidas producen un fichero idéntico.
-- [ ] `openapi.yaml` pasa el validador; todas las rutas tienen esquema para cada código de la tabla de 3.7; no hay ningún esquema de respuesta sin propiedades definidas (comprobado por un test que recorre la especificación); `ErrorResponse.code` es un enum.
-- [ ] `bun run openapi:check` falla si se cambia un esquema de ruta sin regenerar, y pasa tras regenerar.
-- [ ] Un test de contrato comprueba con `app.inject()` que las respuestas reales de 202, 200, 400, 401, 404, 409 y 429 cumplen su esquema de `openapi.yaml`.
+- [x] Repositorio de clientes: key válida, key con `_` y `-` en el secreto, revocada, caducada, cliente desactivado, `clientId` inexistente.
+- [x] CLI: creación de cliente y key, revocación con efecto inmediato en la API sin reiniciarla, rechazo de una tercera key activa, dos `key:create` simultáneos que no superan el máximo.
+- [x] La base de datos solo contiene hashes; ninguna key en claro en tablas ni logs.
+- [x] Integración de la API: 400 por esquema (incluidas cabeceras reservadas y saltos de línea), 413, 401, 403 por transporte y por dominio, 429, aislamiento entre clientes en `GET`, 202 por ambos transportes, 200 y 409 de idempotencia, 404, 422 `SMTP_HOST_NOT_ALLOWED` y `API_TRANSPORT_NOT_CONFIGURED`.
+- [x] Una petición sin autenticar a `/v1/emails` no consume rate limit. *(La parte de los webhooks se comprueba en la fase 5, cuando existan sus rutas.)*
+- [x] `SmtpHostGuard`: IPv4/IPv6 privadas, IPv4 mapeadas en IPv6, loopback, link-local, hostname que resuelve a IP privada (también si solo una de varias lo es), puertos no permitidos, lista blanca con comodines.
+- [x] Ninguna respuesta ni log contiene la contraseña SMTP.
+- [x] `/docs` muestra la especificación.
+- [x] `bun run openapi:export` genera `openapi.yaml` sin servicios levantados ni variables de entorno, y dos ejecuciones seguidas producen un fichero idéntico.
+- [x] `openapi.yaml` pasa el validador; todas las rutas tienen esquema para cada código de la tabla de 3.7 (salvo el 503 de `/health`, que no puede darse: ver "Decisiones" del README); no hay ningún esquema de respuesta sin propiedades definidas (comprobado por un test que recorre la especificación); `ErrorResponse.code` es un enum.
+- [x] `bun run openapi:check` falla si se cambia un esquema de ruta sin regenerar, y pasa tras regenerar.
+- [x] Un test de contrato comprueba con `app.inject()` que las respuestas reales de 202, 200, 400, 401, 404, 409 y 429 cumplen su esquema de `openapi.yaml`.
 
 **Casos de prueba:**
 
 *SmtpHostGuard (unitario, con la resolución DNS inyectada)*
-- [ ] Rechaza puertos distintos de 465 y 587.
-- [ ] Rechaza IPv4 privadas, loopback, link-local, CGNAT, multicast y reservadas, como IP literal y como resultado de DNS.
-- [ ] Rechaza IPv6 loopback, ULA, link-local, multicast y de documentación.
-- [ ] Rechaza IPv4 mapeadas en IPv6 hacia rangos prohibidos y acepta las públicas.
-- [ ] Rechaza un hostname si **alguna** de sus IP es privada, y si no resuelve a ninguna.
-- [ ] Acepta un hostname público y devuelve la primera IP resuelta.
-- [ ] `SMTP_ALLOWED_PRIVATE_HOSTS` exime de la comprobación de IP privada solo a esos nombres.
-- [ ] Con `SMTP_ALLOWED_HOSTS`, solo admite hosts que coinciden (exacto y comodín).
+- [x] Rechaza puertos distintos de 465 y 587.
+- [x] Rechaza IPv4 privadas, loopback, link-local, CGNAT, multicast y reservadas, como IP literal y como resultado de DNS.
+- [x] Rechaza IPv6 loopback, ULA, link-local, multicast y de documentación.
+- [x] Rechaza IPv4 mapeadas en IPv6 hacia rangos prohibidos y acepta las públicas.
+- [x] Rechaza un hostname si **alguna** de sus IP es privada, y si no resuelve a ninguna.
+- [x] Acepta un hostname público y devuelve la primera IP resuelta.
+- [x] `SMTP_ALLOWED_PRIVATE_HOSTS` exime de la comprobación de IP privada solo a esos nombres.
+- [x] Con `SMTP_ALLOWED_HOSTS`, solo admite hosts que coinciden (exacto y comodín).
 
 *API keys (unitario)*
-- [ ] `parseApiKey` separa `ms_<clientId>_<secret>` por los dos primeros `_`, también si el secreto contiene `_` y `-`.
-- [ ] `parseApiKey` rechaza prefijo distinto, `clientId` fuera de `[a-z0-9-]{3,32}` y secreto vacío.
-- [ ] `generateApiKey` produce una key con 32 bytes de secreto en base64url que `parseApiKey` acepta.
-- [ ] `hashApiKeySecret` produce `hmac-sha256:<base64>` y depende del *pepper*.
+- [x] `parseApiKey` separa `ms_<clientId>_<secret>` por los dos primeros `_`, también si el secreto contiene `_` y `-`.
+- [x] `parseApiKey` rechaza prefijo distinto, `clientId` fuera de `[a-z0-9-]{3,32}` y secreto vacío.
+- [x] `generateApiKey` produce una key con 32 bytes de secreto en base64url que `parseApiKey` acepta.
+- [x] `hashApiKeySecret` produce `hmac-sha256:<base64>` y depende del *pepper*.
 
 *Repositorio de clientes (contrato en memoria y Drizzle)*
-- [ ] `authenticate` devuelve el cliente con una key válida, también con `_` y `-` en el secreto.
-- [ ] Devuelve `null` con key revocada, caducada, de un cliente desactivado, de un `clientId` inexistente, mal formada o con secreto incorrecto.
-- [ ] Acepta cualquiera de las dos keys activas de un cliente.
+- [x] `authenticate` devuelve el cliente con una key válida, también con `_` y `-` en el secreto.
+- [x] Devuelve `null` con key revocada, caducada, de un cliente desactivado, de un `clientId` inexistente, mal formada o con secreto incorrecto.
+- [x] Acepta cualquiera de las dos keys activas de un cliente.
 
 *Administración de clientes y keys (integración) y CLI*
-- [ ] `client:create`, `client:update`, `client:disable` y `client:enable`.
-- [ ] `key:create` imprime la key una sola vez y la base de datos solo guarda su hash.
-- [ ] `key:create` rechaza una tercera key activa; dos `key:create` simultáneos no superan el máximo.
-- [ ] `key:revoke` tiene efecto inmediato en `authenticate`.
-- [ ] `list` muestra clientes y keys sin hashes.
-- [ ] El CLI informa de argumentos inválidos sin tocar la base de datos.
+- [x] `client:create`, `client:update`, `client:disable` y `client:enable`.
+- [x] `key:create` imprime la key una sola vez y la base de datos solo guarda su hash.
+- [x] `key:create` rechaza una tercera key activa; dos `key:create` simultáneos no superan el máximo.
+- [x] `key:revoke` tiene efecto inmediato en `authenticate`.
+- [x] `list` muestra clientes y keys sin hashes.
+- [x] El CLI informa de argumentos inválidos sin tocar la base de datos.
 
 *API: transversal*
-- [ ] `X-Request-Id`: se genera un UUID, se acepta el recibido si tiene formato válido y se devuelve en la respuesta.
-- [ ] 404 con el formato de error para rutas desconocidas.
-- [ ] 413 `PAYLOAD_TOO_LARGE` con un cuerpo mayor que `MAX_BODY_BYTES`.
-- [ ] 500 `INTERNAL_ERROR` sin detalles internos, registrado en el log con el `requestId`.
-- [ ] `/ready` responde 200 con el estado de PostgreSQL, Redis y el proveedor, y 503 si alguno falla.
-- [ ] `/docs` muestra la especificación.
+- [x] `X-Request-Id`: se genera un UUID, se acepta el recibido si tiene formato válido y se devuelve en la respuesta.
+- [x] 404 con el formato de error para rutas desconocidas.
+- [x] 413 `PAYLOAD_TOO_LARGE` con un cuerpo mayor que `MAX_BODY_BYTES`.
+- [x] 500 `INTERNAL_ERROR` sin detalles internos, registrado en el log con el `requestId`.
+- [x] `/ready` responde 200 con el estado de PostgreSQL, Redis y el proveedor, y 503 si alguno falla.
+- [x] `/docs` muestra la especificación.
 
 *API: autenticación y rate limit*
-- [ ] 401 `UNAUTHORIZED` con el mismo mensaje sin cabecera, con esquema distinto de Bearer y con key rechazada.
-- [ ] 429 `RATE_LIMITED` con `Retry-After` al superar el límite del cliente (o el por defecto).
-- [ ] Una petición sin autenticar no consume rate limit.
+- [x] 401 `UNAUTHORIZED` con el mismo mensaje sin cabecera, con esquema distinto de Bearer y con key rechazada.
+- [x] 429 `RATE_LIMITED` con `Retry-After` al superar el límite del cliente (o el por defecto).
+- [x] Una petición sin autenticar no consume rate limit.
 
 *API: `POST /v1/emails`*
-- [ ] 202 por `api` y por `smtp`, con `{ id, status: 'queued', transport }`.
-- [ ] 400 `VALIDATION_ERROR` con `details` por: email inválido, sin `to`, direcciones repetidas, asunto vacío, sin `text` ni `html`, más de 50 destinatarios, adjuntos decodificados mayores que `MAX_ATTACHMENTS_BYTES`.
-- [ ] 400 por saltos de línea en asunto, nombres y cabeceras, y por cabeceras reservadas.
-- [ ] 400 con `smtp` sin objeto `smtp`, con puerto distinto de 465/587 o con campo `secure`; con `api` y objeto `smtp`.
-- [ ] 400 con `Idempotency-Key` de más de 255 caracteres.
-- [ ] 403 `TRANSPORT_NOT_ALLOWED` y `FROM_DOMAIN_NOT_ALLOWED`.
-- [ ] 422 `SMTP_HOST_NOT_ALLOWED` y `API_TRANSPORT_NOT_CONFIGURED`.
-- [ ] 200 con el existente al repetir `Idempotency-Key` y cuerpo; 409 `IDEMPOTENCY_CONFLICT` con otro cuerpo.
-- [ ] Ninguna respuesta ni log contiene la contraseña SMTP.
+- [x] 202 por `api` y por `smtp`, con `{ id, status: 'queued', transport }`.
+- [x] 400 `VALIDATION_ERROR` con `details` por: email inválido, sin `to`, direcciones repetidas, asunto vacío, sin `text` ni `html`, más de 50 destinatarios, adjuntos decodificados mayores que `MAX_ATTACHMENTS_BYTES`.
+- [x] 400 por saltos de línea en asunto, nombres y cabeceras, y por cabeceras reservadas.
+- [x] 400 con `smtp` sin objeto `smtp`, con puerto distinto de 465/587 o con campo `secure`; con `api` y objeto `smtp`.
+- [x] 400 con `Idempotency-Key` de más de 255 caracteres.
+- [x] 403 `TRANSPORT_NOT_ALLOWED` y `FROM_DOMAIN_NOT_ALLOWED`.
+- [x] 422 `SMTP_HOST_NOT_ALLOWED` y `API_TRANSPORT_NOT_CONFIGURED`.
+- [x] 200 con el existente al repetir `Idempotency-Key` y cuerpo; 409 `IDEMPOTENCY_CONFLICT` con otro cuerpo.
+- [x] Ninguna respuesta ni log contiene la contraseña SMTP.
 
 *API: `GET /v1/emails/:id`*
-- [ ] 200 con estado, transporte, proveedor, destinatarios, resumen por estado, intentos y fechas, sin credenciales SMTP.
-- [ ] 404 para un mensaje de otro cliente o inexistente; 400 para un id que no es UUID.
+- [x] 200 con estado, transporte, proveedor, destinatarios, resumen por estado, intentos y fechas, sin credenciales SMTP.
+- [x] 404 para un mensaje de otro cliente o inexistente; 400 para un id que no es UUID.
 
 *OpenAPI*
-- [ ] `openapi:export` genera `openapi.yaml` sin servicios ni variables de entorno, idéntico en dos ejecuciones.
-- [ ] La especificación pasa el validador, tiene esquema para cada código de la tabla de 3.7, ningún esquema de respuesta sin propiedades y `ErrorResponse.code` como enum.
-- [ ] `openapi:check` falla si la especificación no está al día y pasa tras regenerarla.
-- [ ] Las respuestas reales de 202, 200, 400, 401, 404, 409 y 429 cumplen su esquema de `openapi.yaml`.
+- [x] `openapi:export` genera `openapi.yaml` sin servicios ni variables de entorno, idéntico en dos ejecuciones.
+- [x] La especificación pasa el validador, tiene esquema para cada código de la tabla de 3.7, ningún esquema de respuesta sin propiedades y `ErrorResponse.code` como enum.
+- [x] `openapi:check` falla si la especificación no está al día y pasa tras regenerarla.
+- [x] Las respuestas reales de 202, 200, 400, 401, 404, 409 y 429 cumplen su esquema de `openapi.yaml`.
 
 *Integración de la API (PostgreSQL y Redis)*
-- [ ] Una key creada y revocada con el CLI se acepta y rechaza en la API sin reiniciarla.
-- [ ] El rate limit se comparte en Redis.
-- [ ] La base de datos solo contiene hashes de keys.
+- [x] Una key creada y revocada con el CLI se acepta y rechaza en la API sin reiniciarla.
+- [x] El rate limit se comparte en Redis.
+- [x] La base de datos solo contiene hashes de keys.
 
 ---
 
