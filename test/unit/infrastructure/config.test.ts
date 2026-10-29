@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest';
+import { loadConfig } from '../../../src/infrastructure/config';
+
+type Env = Record<string, string | undefined>;
+
+const KEY_A = Buffer.alloc(32, 1).toString('base64');
+const PEPPER = Buffer.alloc(32, 3).toString('base64');
+
+const baseEnv = (): Env => ({ DATABASE_URL: 'postgres://mail:mail@localhost:5432/mail' });
+
+const apiEnv = (): Env => ({
+  ...baseEnv(),
+  REDIS_URL: 'redis://localhost:6379',
+  SMTP_CREDENTIALS_ENCRYPTION_KEY: KEY_A,
+  API_KEY_PEPPER: PEPPER,
+});
+
+describe('loadConfig', () => {
+  it('loads a minimal api environment and applies defaults', () => {
+    const config = loadConfig('api', apiEnv());
+
+    expect(config).toMatchObject({
+      nodeEnv: 'development',
+      logLevel: 'info',
+      port: 3000,
+      databaseUrl: 'postgres://mail:mail@localhost:5432/mail',
+      redisUrl: 'redis://localhost:6379',
+      allowedFromDomains: [],
+      rateLimitDefaultPerMinute: 120,
+      maxBodyBytes: 15_728_640,
+      maxAttachmentsBytes: 10_485_760,
+      mailApiProvider: undefined,
+      smtp: {
+        allowedHosts: [],
+        allowedPrivateHosts: [],
+        poolMaxConnections: 5,
+        rateLimitPerSecond: 5,
+        transportCacheTtlMs: 300_000,
+        transportCacheMax: 50,
+        connectionTimeoutMs: 10_000,
+        greetingTimeoutMs: 10_000,
+        socketTimeoutMs: 30_000,
+      },
+    });
+    expect(config.smtpEncryptionKey).toEqual(Buffer.from(KEY_A, 'base64'));
+    expect(config.smtpEncryptionKeyPrevious).toBeUndefined();
+    expect(config.apiKeyPepper).toEqual(Buffer.from(PEPPER, 'base64'));
+  });
+});
