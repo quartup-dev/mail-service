@@ -15,7 +15,7 @@
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Andamiaje | Completada |
-| 1 | Dominio y casos de uso | Pendiente |
+| 1 | Dominio y casos de uso | En curso |
 | 2 | Persistencia, colas y worker | Pendiente |
 | 3 | API HTTP y autenticación | Pendiente |
 | 4 | Proveedores reales | Pendiente |
@@ -396,6 +396,114 @@ export interface ApiClientRepository {
 - [ ] Barrido: re-encolado de pendientes y caducidad `EXPIRED` con borrado de credenciales.
 - [ ] Rechazo de `api` sin proveedor configurado.
 - [ ] Cobertura ≥ 80 % en `domain/` y `application/`.
+
+**Casos de prueba:**
+
+*Dominio: coincidencia de dominios (`matchesDomainPattern`)*
+- [ ] Un dominio exacto coincide sin distinguir mayúsculas.
+- [ ] Un dominio exacto no coincide con sus subdominios.
+- [ ] `*.example.com` coincide con subdominios de cualquier nivel.
+- [ ] `*.example.com` no coincide con `example.com`.
+- [ ] Un patrón no coincide con un dominio que solo termina igual (`badexample.com`).
+
+*Dominio: estado por destinatario*
+- [ ] El estado avanza a un rango mayor.
+- [ ] El estado no retrocede ni cambia con el mismo rango.
+- [ ] `suppressed` y `rejected` son finales.
+
+*SecretBox (`AesGcmSecretBox`)*
+- [ ] Descifra lo que cifra.
+- [ ] El texto cifrado tiene el formato `<keyId>:<base64url>` con el `keyId` de la clave activa.
+- [ ] Dos cifrados del mismo texto son distintos (IV aleatorio).
+- [ ] Descifra con la clave anterior.
+- [ ] Un `keyId` desconocido lanza `UndecryptableSecretError`.
+- [ ] Un texto cifrado manipulado o mal formado lanza `UndecryptableSecretError`.
+
+*Hash de la petición (`computeRequestHash`)*
+- [ ] La misma petición produce el mismo hash.
+- [ ] Peticiones distintas producen hashes distintos.
+- [ ] Con SMTP, el hash depende del *pepper*: la contraseña y la clave DKIM entran como HMAC, no en claro.
+- [ ] Cambiar la contraseña SMTP o la clave DKIM cambia el hash.
+
+*Repositorio de emails en memoria (contrato del puerto, reutilizable en la fase 2)*
+- [ ] `create` guarda el mensaje en `queued` con sus destinatarios en `pending`, en minúsculas y con su tipo.
+- [ ] `create` guarda transporte, host y puerto SMTP y la configuración cifrada.
+- [ ] `create` con la misma `idempotencyKey` y cliente devuelve el existente con `created = false`.
+- [ ] La misma `idempotencyKey` en otro cliente crea un mensaje nuevo.
+- [ ] `findById` devuelve `null` si no existe, y modificar lo devuelto no altera lo guardado.
+- [ ] `findByProviderMessageId` encuentra por proveedor e id.
+- [ ] `updateStatus` aplica el estado, el *patch* y `updatedAt`.
+- [ ] `recordAttempt` añade intentos.
+- [ ] `setRecipientStatuses` avanza los estados y no los retrocede.
+- [ ] `advanceRecipientStatus` devuelve si aplicó la transición (también con un destinatario desconocido).
+- [ ] `findPending` filtra por estado pendiente, `createdBefore`, `updatedBefore` y límite.
+- [ ] `recordEvent` y `deleteEvents` borran solo los eventos anteriores a la fecha, hasta el límite.
+- [ ] `clearPayloads` vacía solo payloads de mensajes finales anteriores a la fecha, hasta el límite, y no cuenta los ya vacíos.
+- [ ] `deleteFinalEmails` borra solo mensajes finales anteriores a la fecha, con sus eventos, hasta el límite.
+
+*Repositorio de supresiones en memoria (contrato del puerto)*
+- [ ] `findSuppressed` devuelve las direcciones suprimidas sin distinguir mayúsculas.
+- [ ] `add` es idempotente y `remove` quita la dirección.
+- [ ] `list` filtra por motivo y pagina.
+
+*QueueEmail*
+- [ ] Con `api`: crea el mensaje en `queued` y lo encola en la cola `api`.
+- [ ] Rechaza un transporte no permitido al cliente (`TRANSPORT_NOT_ALLOWED`).
+- [ ] Rechaza `api` sin proveedor configurado (`API_TRANSPORT_NOT_CONFIGURED`).
+- [ ] Con `api`, valida el dominio de `from` con los dominios del cliente; si no tiene, con los globales (`FROM_DOMAIN_NOT_ALLOWED`).
+- [ ] Con `smtp`: rechaza un host que el guard no permite (`SMTP_HOST_NOT_ALLOWED`).
+- [ ] Con `smtp`: guarda la configuración cifrada (incluida DKIM) y el `payload` sin contraseña ni clave DKIM.
+- [ ] Con `smtp`: no valida el dominio de `from`.
+- [ ] Si el `enqueue` falla, registra un aviso y devuelve igualmente `queued`.
+- [ ] Idempotencia: misma key y cuerpo devuelve el existente y lo re-encola si está pendiente.
+- [ ] Idempotencia: un existente en estado final no se re-encola.
+- [ ] Idempotencia: misma key y cuerpo SMTP no da conflicto aunque el cifrado cambie.
+- [ ] Idempotencia: misma key con otro cuerpo da `IDEMPOTENCY_CONFLICT`.
+
+*ProcessEmailJob*
+- [ ] Con `api`: envía, deja `sent` con proveedor, `providerMessageId` y `sentAt`, destinatarios en `accepted` y un intento `success`.
+- [ ] Con `smtp`: descifra la configuración, valida el host, envía a la IP validada y borra la configuración cifrada.
+- [ ] Con `smtp`: los destinatarios rechazados quedan en `rejected` y el resto en `accepted`.
+- [ ] Un mensaje en estado final o inexistente no se envía.
+- [ ] Un mensaje en `sending` se envía.
+- [ ] Supresión parcial con `api`: los suprimidos quedan en `suppressed` y no se les envía.
+- [ ] Supresión total con `api`: el mensaje queda en `suppressed` y no se envía.
+- [ ] La supresión no se aplica con `smtp`.
+- [ ] Un `delivered` registrado antes del resultado del worker no se pisa con `accepted`.
+- [ ] Error transitorio con intentos restantes: vuelve a `queued`, registra el intento y relanza.
+- [ ] Error transitorio en el último intento: `failed` con código y motivo, y configuración SMTP borrada.
+- [ ] Error permanente: `failed`, configuración SMTP borrada y relanza `PermanentProviderError`.
+- [ ] Un error sin clasificar se trata como transitorio.
+- [ ] Configuración cifrada con la clave anterior: se descifra y se envía.
+- [ ] Clave desconocida: `failed` con `SMTP_CONFIG_UNDECRYPTABLE` como error permanente.
+- [ ] Host rechazado por el guard en el worker: `failed` con `SMTP_HOST_NOT_ALLOWED` como error permanente.
+- [ ] `api` sin proveedor configurado en el worker: `failed` con `API_TRANSPORT_NOT_CONFIGURED`.
+
+*Flujo completo*
+- [ ] `QueueEmail` + `ProcessEmailJob` por `api` termina en `sent`.
+- [ ] `QueueEmail` + `ProcessEmailJob` por `smtp` termina en `sent` sin configuración cifrada.
+
+*HandleProviderEvent*
+- [ ] Correlaciona por id interno y avanza solo el destinatario afectado.
+- [ ] Sin id interno, correlaciona por (`provider`, `providerMessageId`).
+- [ ] Un evento sin correlación se guarda con `emailId` nulo.
+- [ ] Eventos desordenados o duplicados se guardan, pero no retroceden el estado.
+- [ ] Rebote, queja y baja añaden la dirección a supresión con su motivo; `delivered` y fallos temporales no.
+
+*GetEmailStatus*
+- [ ] Devuelve el mensaje del cliente que pregunta.
+- [ ] Devuelve "no encontrado" para un mensaje de otro cliente o inexistente.
+
+*SweepPendingEmails*
+- [ ] Caduca los pendientes con más de `PENDING_MAX_AGE_MS` (`failed`, `EXPIRED`, configuración borrada).
+- [ ] Re-encola los pendientes sin actividad en `STALE_PENDING_AFTER_MS`.
+- [ ] No toca mensajes recientes ni finales.
+- [ ] Caduca por lotes hasta que no quedan.
+
+*ApplyRetention*
+- [ ] Vacía payloads, borra eventos y borra mensajes finales según sus plazos.
+- [ ] No toca mensajes pendientes.
+- [ ] Procesa por lotes hasta que no quedan filas.
 
 ---
 
