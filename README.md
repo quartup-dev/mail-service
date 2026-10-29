@@ -18,8 +18,11 @@ bun run dev:certs           # CA local y certificado de Mailpit (solo la primera
 docker compose up -d --wait # PostgreSQL, Redis y Mailpit
 cp .env.example .env        # y rellena API_KEY_PEPPER y SMTP_CREDENTIALS_ENCRYPTION_KEY
                             # con: openssl rand -base64 32
+bun run db:migrate          # aplica las migraciones de drizzle/
 bun run dev                 # API en http://localhost:3000
+bun run dev:worker          # worker; health en http://localhost:3001
 curl http://localhost:3000/health
+curl http://localhost:3001/ready
 ```
 
 Comprobaciones:
@@ -41,6 +44,7 @@ Servicios de desarrollo:
 | Redis                               | 56379             |
 | Mailpit SMTP (STARTTLS obligatorio) | 587               |
 | Mailpit web                         | 8025              |
+| Health del worker                   | 3001              |
 
 ## Decisiones
 
@@ -70,3 +74,18 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 - **Retención de payloads por `updated_at`.** `clearPayloads` usa la fecha en que el mensaje pasó a estado final, que es su `updated_at`: los estados finales no cambian.
 - **El host SMTP no se repite en `email_attempts`.** Ya está en `emails.smtp_host`, y el esquema de la fase 2 no tiene esa columna en los intentos.
 - **Repositorios en memoria en `src/infrastructure/db/in-memory/`** y sus tests de contrato en `test/contracts/`, para reutilizarlos con Drizzle en la fase 2. Los fakes de proveedores, guard, cola, logger y reloj están en `test/support/`.
+
+### Fase 2: persistencia, colas y worker
+
+- **ioredis 5.11.1 en lugar de 6.** BullMQ 6 admite ioredis 6 como _peer_, pero sus tests usan la 5.11.1. Revisar al actualizar BullMQ.
+- **BullMQ 6.3.15**, la última versión de la línea 6.3 con más de dos semanas al fijarla (las 6.4 y 6.5 tenían días).
+- **Backoff exponencial con _jitter_ de 0,5.** La espera de cada reintento es `WORKER_BACKOFF_BASE_MS · 2^(n-1)`, recortada al azar hasta la mitad para que los reintentos no lleguen en bloque.
+- **Columna `position` en `email_recipients`** para conservar el orden de `to`, `cc` y `bcc`; **sin `last_event_at`**, porque `updated_at` ya guarda la hora del evento.
+- **Índices en `email_attempts.email_id` y `email_events.email_id`**, además de los del plan: los usan la carga de intentos y el borrado en cascada de la retención.
+- **Fechas con precisión de milisegundos (`timestamp(3)`)** y siempre puestas por la aplicación con su `Clock`, nunca con `now()` de PostgreSQL.
+- **Migraciones con un script propio (`scripts/migrate.ts`)** en lugar de `drizzle-kit migrate`, que es dependencia de desarrollo y no estará en la imagen. Usa un tipo de proceso `migrate` en la configuración que solo exige `DATABASE_URL`, y busca las migraciones en `drizzle/` relativo al directorio de trabajo.
+- **El log de cada envío lo escribe `ProcessEmailJob`** (con `messageId`, `clientId`, `requestId`, `transport`, `provider` y `attempt`), que ya tiene esos datos, en lugar del consumidor de BullMQ.
+- **El consumidor convierte en `UnrecoverableError` tanto `PermanentProviderError` como `EmailRequestRejectedError`.**
+- **Tamaño de lote de barrido y retención fijo en 1000** y retención cada hora, sin variables de entorno.
+- **Adaptadores SMTP provisionales.** Hasta la fase 3 (`SmtpHostGuard` con DNS) y la 4 (envío con Nodemailer, Mailgun y SES), el worker usa un guard y un sender que fallan siempre con error permanente, y no tiene proveedor de API: un mensaje que llegue al worker acaba en `failed`. La API aún no crea mensajes, así que no afecta a ningún envío real.
+- **Tests de integración**: un _global setup_ recrea la base `mail_test` y aplica las migraciones; cada test vacía las tablas y usa un prefijo de Redis propio. Los ficheros de integración se ejecutan en serie.
