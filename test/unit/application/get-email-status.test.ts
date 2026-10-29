@@ -32,7 +32,10 @@ describe('GetEmailStatus', () => {
     const { useCase } = await setup();
 
     expect(
-      await useCase.execute({ clientId: 'billing', emailId: '0192f0c4-0000-7000-8000-999999999999' }),
+      await useCase.execute({
+        clientId: 'billing',
+        emailId: '0192f0c4-0000-7000-8000-999999999999',
+      }),
     ).toBeNull();
   });
 });
