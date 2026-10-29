@@ -132,6 +132,11 @@ export class InMemoryEmailRepository implements EmailRepository {
     this.events.push(structuredClone(event));
   }
 
+  // Solo para tests: el puerto no expone lectura de eventos
+  listEvents(): StoredEvent[] {
+    return structuredClone(this.events);
+  }
+
   async clearPayloads(finalBefore: Date, limit: number): Promise<number> {
     const expired = [...this.emails.values()]
       .filter((email) => isFinal(email) && email.payload !== null && email.updatedAt < finalBefore)
