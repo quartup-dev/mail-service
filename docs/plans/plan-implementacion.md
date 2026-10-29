@@ -88,8 +88,8 @@ Además del stack de CLAUDE.md:
 **Casos de prueba:**
 
 *Health y runtime*
-- [ ] `GET /health` responde 200 con `{ "status": "ok" }`.
-- [ ] Los tests se ejecutan sobre Node, no sobre Bun.
+- [x] `GET /health` responde 200 con `{ "status": "ok" }`.
+- [x] Los tests se ejecutan sobre Node, no sobre Bun.
 
 *Configuración (`loadConfig(kind, env)`; `kind`: `api`, `worker`, `keys-cli`, `suppressions-cli`)*
 - [ ] `api` con un entorno mínimo válido carga y aplica los valores por defecto del anexo A.

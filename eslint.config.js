@@ -32,6 +32,10 @@ export default defineConfig(
       globals: globals.node,
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
+    rules: {
+      // Fastify espera plugins y handlers async aunque no usen await
+      '@typescript-eslint/require-await': 'off',
+    },
   },
   {
     files: ['**/*.js'],
