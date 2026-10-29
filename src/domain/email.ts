@@ -56,6 +56,10 @@ export type EmailStatus =
 
 export const FINAL_EMAIL_STATUSES: readonly EmailStatus[] = ['sent', 'failed', 'suppressed'];
 
+export function isFinalEmailStatus(status: EmailStatus): boolean {
+  return FINAL_EMAIL_STATUSES.includes(status);
+}
+
 export type RecipientKind = 'to' | 'cc' | 'bcc';
 
 export type RecipientStatus =

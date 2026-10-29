@@ -9,14 +9,12 @@ import type {
 } from '../../../application/ports/email-repository';
 import {
   canAdvanceRecipientStatus,
-  FINAL_EMAIL_STATUSES,
+  isFinalEmailStatus,
   recipientsOf,
   type EmailStatus,
   type ProviderName,
   type RecipientStatus,
 } from '../../../domain/email';
-
-const PENDING_STATUSES: readonly EmailStatus[] = ['queued', 'sending'];
 
 export class InMemoryEmailRepository implements EmailRepository {
   private readonly emails = new Map<string, StoredEmail>();
@@ -123,7 +121,7 @@ export class InMemoryEmailRepository implements EmailRepository {
   ): Promise<StoredEmail[]> {
     const { createdBefore, updatedBefore } = filter;
     return [...this.emails.values()]
-      .filter((email) => PENDING_STATUSES.includes(email.status))
+      .filter((email) => !isFinalEmailStatus(email.status))
       .filter((email) => !createdBefore || email.createdAt < createdBefore)
       .filter((email) => !updatedBefore || email.updatedAt < updatedBefore)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -162,5 +160,5 @@ export class InMemoryEmailRepository implements EmailRepository {
 }
 
 function isFinal(email: StoredEmail): boolean {
-  return FINAL_EMAIL_STATUSES.includes(email.status);
+  return isFinalEmailStatus(email.status);
 }
