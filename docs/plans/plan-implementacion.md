@@ -16,7 +16,7 @@
 |---|---|---|
 | 0 | Andamiaje | Completada |
 | 1 | Dominio y casos de uso | Completada |
-| 2 | Persistencia, colas y worker | Pendiente |
+| 2 | Persistencia, colas y worker | En curso |
 | 3 | API HTTP y autenticación | Pendiente |
 | 4 | Proveedores reales | Pendiente |
 | 5 | Webhooks y supresión | Pendiente |
@@ -549,6 +549,53 @@ Todas las tablas se crean en esta fase, incluidas las de clientes, porque `email
 - [ ] Un error permanente no genera reintentos (un único registro en `email_attempts`); uno transitorio repetido agota `WORKER_MAX_ATTEMPTS` y deja `failed`.
 - [ ] `/health` y `/ready` del worker responden, y `/ready` devuelve 503 durante el apagado.
 - [ ] La retención vacía payloads, borra eventos y borra mensajes según sus plazos, no toca pendientes ni supresiones, y procesa por lotes (probado con más filas que el tamaño de lote).
+
+**Casos de prueba:**
+
+*Configuración y migraciones*
+- [ ] El proceso `migrate` solo exige `DATABASE_URL`.
+- [ ] `bun run db:migrate` aplica las migraciones en una base vacía y una segunda ejecución no falla (integración).
+
+*`IdGenerator`*
+- [ ] Genera UUID v7 distintos y ordenados por tiempo de creación.
+
+*Repositorios Drizzle (integración, mismos contratos que en memoria)*
+- [ ] `DrizzleEmailRepository` pasa el contrato de `EmailRepository`.
+- [ ] `DrizzleSuppressionRepository` pasa el contrato de `SuppressionRepository`.
+- [ ] Contrato ampliado: `create` en paralelo con la misma `idempotencyKey` inserta un solo mensaje.
+- [ ] Contrato ampliado: `advanceRecipientStatus` y `setRecipientStatuses` en paralelo no retroceden el estado.
+
+*Cola (`BullMqEmailQueue`, integración)*
+- [ ] Encola en `emails-api` o `emails-smtp` según el transporte, con `jobId = messageId` y solo el `messageId` en los datos.
+- [ ] Encolar dos veces el mismo mensaje deja un solo job.
+- [ ] Los jobs llevan `attempts`, backoff exponencial con jitter y se eliminan al completar o fallar.
+
+*ProcessEmailJob (unitario)*
+- [ ] Registra el resultado del envío en el log con `messageId`, `clientId`, `requestId`, `transport`, `provider` y `attempt`.
+
+*Consumidores (unitario)*
+- [ ] El consumidor de emails pasa `attempt = attemptsMade + 1` y `maxAttempts = opts.attempts` a `ProcessEmailJob`.
+- [ ] Convierte `PermanentProviderError` y `EmailRequestRejectedError` en `UnrecoverableError` y relanza el resto tal cual.
+- [ ] El consumidor de mantenimiento ejecuta `SweepPendingEmails` o `ApplyRetention` según el nombre del job y falla con un nombre desconocido.
+
+*Health del worker (unitario, servidor HTTP real en un puerto efímero)*
+- [ ] `/health` responde 200.
+- [ ] `/ready` responde 200 con el estado de PostgreSQL, Redis y los workers.
+- [ ] `/ready` responde 503 si falla una dependencia o un worker no está en marcha.
+- [ ] `/ready` responde 503 durante el apagado.
+- [ ] Una ruta desconocida responde 404.
+
+*Worker completo (integración con PostgreSQL, Redis y fakes de proveedores)*
+- [ ] Procesa por ambos transportes: estado final `sent` y `smtp_config_encrypted` a `NULL`.
+- [ ] Un mensaje guardado sin job en Redis acaba enviado gracias al barrido.
+- [ ] Un `FakeSmtpSender` lento que ocupa toda la concurrencia de `emails-smtp` no retrasa `emails-api`.
+- [ ] Un error permanente deja un único intento; uno transitorio repetido agota `WORKER_MAX_ATTEMPTS` y deja `failed`.
+- [ ] `WORKER_QUEUES=api` solo consume `emails-api` (y `maintenance`).
+- [ ] Los job schedulers de mantenimiento quedan registrados una sola vez aunque arranquen dos workers.
+- [ ] El apagado espera a los jobs activos y después cierra.
+
+*Retención (integración)*
+- [ ] `ApplyRetention` con Drizzle respeta los plazos, no toca pendientes ni supresiones y procesa más filas que el tamaño de lote.
 
 ---
 

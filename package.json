@@ -31,8 +31,12 @@
     "dev:certs": "bash scripts/dev-certs.sh"
   },
   "dependencies": {
+    "bullmq": "6.3.15",
+    "drizzle-orm": "0.45.4",
     "fastify": "5.12.7",
+    "ioredis": "6.0.0",
     "nodemailer": "10.3.1",
+    "pg": "8.23.1",
     "pino": "10.4.0",
     "zod": "4.6.7"
   },
@@ -40,7 +44,9 @@
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
     "@types/nodemailer": "8.0.2",
+    "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "5.0.5",
+    "drizzle-kit": "0.31.11",
     "eslint": "10.13.0",
     "eslint-config-prettier": "10.1.8",
     "globals": "17.13.0",
