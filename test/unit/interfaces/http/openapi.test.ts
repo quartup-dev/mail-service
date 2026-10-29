@@ -161,8 +161,12 @@ describe('OpenAPI document', () => {
     for (const response of Object.values(responses)) {
       expect(Object.keys(response.headers ?? {})).toContain('X-Request-Id');
     }
-    expect(responses['429']?.headers?.['Retry-After']).toMatchObject({ schema: { type: 'integer' } });
-    expect(responses['202']?.headers?.['X-Request-Id']).toMatchObject({ schema: { type: 'string' } });
+    expect(responses['429']?.headers?.['Retry-After']).toMatchObject({
+      schema: { type: 'integer' },
+    });
+    expect(responses['202']?.headers?.['X-Request-Id']).toMatchObject({
+      schema: { type: 'string' },
+    });
   });
 
   it('includes examples for both transports and for the status response', () => {
