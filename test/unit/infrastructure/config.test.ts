@@ -26,11 +26,14 @@ const keysCliEnv = (): Env => ({ ...baseEnv(), API_KEY_PEPPER: PEPPER });
 
 const suppressionsCliEnv = (): Env => baseEnv();
 
+const migrateEnv = (): Env => baseEnv();
+
 const validEnvFor: Record<ProcessKind, () => Env> = {
   api: apiEnv,
   worker: workerEnv,
   'keys-cli': keysCliEnv,
   'suppressions-cli': suppressionsCliEnv,
+  migrate: migrateEnv,
 };
 
 const PROCESS_KINDS = Object.keys(validEnvFor) as ProcessKind[];
@@ -113,6 +116,14 @@ describe('loadConfig', () => {
         );
       },
     );
+  });
+
+  it('loads a migrate environment with only DATABASE_URL', () => {
+    expect(loadConfig('migrate', migrateEnv())).toEqual({
+      nodeEnv: 'development',
+      logLevel: 'info',
+      databaseUrl: 'postgres://mail:mail@localhost:5432/mail',
+    });
   });
 
   it('loads a minimal worker environment and applies defaults', () => {

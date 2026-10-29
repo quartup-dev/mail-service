@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export type ProcessKind = 'api' | 'worker' | 'keys-cli' | 'suppressions-cli';
+export type ProcessKind = 'api' | 'worker' | 'keys-cli' | 'suppressions-cli' | 'migrate';
 
 type Env = Record<string, string | undefined>;
 
@@ -277,6 +277,7 @@ const schemas = {
     apiKeyPepper: env.API_KEY_PEPPER,
   })),
   'suppressions-cli': z.object(commonFields).transform(toCommon),
+  migrate: z.object(commonFields).transform(toCommon),
 };
 
 type Schemas = typeof schemas;
@@ -285,6 +286,7 @@ export type ApiConfig = z.output<Schemas['api']>;
 export type WorkerConfig = z.output<Schemas['worker']>;
 export type KeysCliConfig = z.output<Schemas['keys-cli']>;
 export type SuppressionsCliConfig = z.output<Schemas['suppressions-cli']>;
+export type MigrateConfig = z.output<Schemas['migrate']>;
 
 // Única lectura de process.env del proyecto; los tests pasan su propio entorno
 export function loadConfig<K extends ProcessKind>(
