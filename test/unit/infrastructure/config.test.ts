@@ -4,6 +4,7 @@ import { ConfigError, loadConfig, type ProcessKind } from '../../../src/infrastr
 type Env = Record<string, string | undefined>;
 
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
+const KEY_B = Buffer.alloc(32, 2).toString('base64');
 const PEPPER = Buffer.alloc(32, 3).toString('base64');
 
 const baseEnv = (): Env => ({ DATABASE_URL: 'postgres://mail:mail@localhost:5432/mail' });
@@ -58,11 +59,14 @@ describe('loadConfig', () => {
     { variable: 'SMTP_CREDENTIALS_ENCRYPTION_KEY', requiredIn: ['api', 'worker'] },
     { variable: 'API_KEY_PEPPER', requiredIn: ['api', 'keys-cli'] },
   ])('$variable', ({ variable, requiredIn }) => {
-    it.each(PROCESS_KINDS.filter((kind) => requiredIn.includes(kind)))('is required in %s', (kind) => {
-      const env = { ...validEnvFor[kind](), [variable]: undefined };
+    it.each(PROCESS_KINDS.filter((kind) => requiredIn.includes(kind)))(
+      'is required in %s',
+      (kind) => {
+        const env = { ...validEnvFor[kind](), [variable]: undefined };
 
-      expect(configErrorOf(kind, env).message).toContain(variable);
-    });
+        expect(configErrorOf(kind, env).message).toContain(variable);
+      },
+    );
 
     it.each(PROCESS_KINDS.filter((kind) => !requiredIn.includes(kind)))(
       'is not required in %s',
@@ -85,6 +89,30 @@ describe('loadConfig', () => {
       expect(error.message).toContain(variable);
       expect(error.message).not.toContain(value);
     });
+  });
+
+  describe('SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS', () => {
+    it.each(['api', 'worker'] as const)(
+      'is loaded in %s when it differs from the active key',
+      (kind) => {
+        const env = { ...validEnvFor[kind](), SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: KEY_B };
+
+        expect(loadConfig(kind, env).smtpEncryptionKeyPrevious).toEqual(
+          Buffer.from(KEY_B, 'base64'),
+        );
+      },
+    );
+
+    it.each(['api', 'worker'] as const)(
+      'is rejected in %s when it equals the active key',
+      (kind) => {
+        const env = { ...validEnvFor[kind](), SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: KEY_A };
+
+        expect(configErrorOf(kind, env).message).toContain(
+          'SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS',
+        );
+      },
+    );
   });
 
   it('loads a minimal api environment and applies defaults', () => {

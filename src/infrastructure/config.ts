@@ -14,7 +14,8 @@ export class ConfigError extends Error {
   }
 }
 
-const positiveInt = (defaultValue: number) => z.coerce.number().int().positive().default(defaultValue);
+const positiveInt = (defaultValue: number) =>
+  z.coerce.number().int().positive().default(defaultValue);
 
 const commaList = z
   .string()
@@ -71,6 +72,18 @@ const apiOnlyFields = {
 type CommonEnv = z.output<z.ZodObject<typeof commonFields>>;
 type ServerEnv = z.output<z.ZodObject<typeof serverFields>>;
 
+// Reglas que relacionan varias variables de API y worker
+const checkServerRules = (env: ServerEnv, ctx: z.RefinementCtx) => {
+  const previous = env.SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS;
+  if (previous?.equals(env.SMTP_CREDENTIALS_ENCRYPTION_KEY)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS'],
+      message: 'must differ from SMTP_CREDENTIALS_ENCRYPTION_KEY',
+    });
+  }
+};
+
 const toCommon = (env: CommonEnv) => ({
   nodeEnv: env.NODE_ENV,
   logLevel: env.LOG_LEVEL,
@@ -96,20 +109,26 @@ const toServer = (env: ServerEnv) => ({
 });
 
 const schemas = {
-  api: z.object({ ...commonFields, ...serverFields, ...apiOnlyFields }).transform((env) => ({
-    ...toCommon(env),
-    ...toServer(env),
-    port: env.PORT,
-    allowedFromDomains: env.ALLOWED_FROM_DOMAINS,
-    apiKeyPepper: env.API_KEY_PEPPER,
-    rateLimitDefaultPerMinute: env.RATE_LIMIT_DEFAULT_PER_MINUTE,
-    maxBodyBytes: env.MAX_BODY_BYTES,
-    maxAttachmentsBytes: env.MAX_ATTACHMENTS_BYTES,
-  })),
-  worker: z.object({ ...commonFields, ...serverFields }).transform((env) => ({
-    ...toCommon(env),
-    ...toServer(env),
-  })),
+  api: z
+    .object({ ...commonFields, ...serverFields, ...apiOnlyFields })
+    .superRefine(checkServerRules)
+    .transform((env) => ({
+      ...toCommon(env),
+      ...toServer(env),
+      port: env.PORT,
+      allowedFromDomains: env.ALLOWED_FROM_DOMAINS,
+      apiKeyPepper: env.API_KEY_PEPPER,
+      rateLimitDefaultPerMinute: env.RATE_LIMIT_DEFAULT_PER_MINUTE,
+      maxBodyBytes: env.MAX_BODY_BYTES,
+      maxAttachmentsBytes: env.MAX_ATTACHMENTS_BYTES,
+    })),
+  worker: z
+    .object({ ...commonFields, ...serverFields })
+    .superRefine(checkServerRules)
+    .transform((env) => ({
+      ...toCommon(env),
+      ...toServer(env),
+    })),
   'keys-cli': z.object({ ...commonFields, API_KEY_PEPPER: key32 }).transform((env) => ({
     ...toCommon(env),
     apiKeyPepper: env.API_KEY_PEPPER,
