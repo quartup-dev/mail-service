@@ -33,13 +33,13 @@ bun run test:integration    # requiere docker compose up
 
 Servicios de desarrollo:
 
-| Servicio | Puerto en el host |
-|---|---|
-| API | 3000 |
-| PostgreSQL | 55432 |
-| Redis | 56379 |
-| Mailpit SMTP (STARTTLS obligatorio) | 587 |
-| Mailpit web | 8025 |
+| Servicio                            | Puerto en el host |
+| ----------------------------------- | ----------------- |
+| API                                 | 3000              |
+| PostgreSQL                          | 55432             |
+| Redis                               | 56379             |
+| Mailpit SMTP (STARTTLS obligatorio) | 587               |
+| Mailpit web                         | 8025              |
 
 ## Decisiones
 
