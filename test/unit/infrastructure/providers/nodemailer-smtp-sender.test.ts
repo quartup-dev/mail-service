@@ -1,6 +1,7 @@
 import type { SendMailOptions, SMTPPoolOptions } from 'nodemailer';
 import { describe, expect, it } from 'vitest';
 import type { SmtpServerConfig } from '../../../../src/domain/email';
+import { PermanentProviderError, TransientProviderError } from '../../../../src/domain/errors';
 import {
   NodemailerSmtpSender,
   type SmtpSenderSettings,
@@ -172,6 +173,23 @@ describe('NodemailerSmtpSender', () => {
     });
   });
 
+  it.each([
+    { reply: 450, ErrorClass: TransientProviderError },
+    { reply: 550, ErrorClass: PermanentProviderError },
+  ])('classifies a failed send with an SMTP $reply reply', async ({ reply, ErrorClass }) => {
+    const { sender } = senderWith({}, (transport) => {
+      transport.failure = Object.assign(new Error('Rejected'), {
+        code: 'EENVELOPE',
+        responseCode: reply,
+      });
+    });
+
+    const sending = sender.send(message, SERVER, { ip: IP });
+
+    await expect(sending).rejects.toBeInstanceOf(ErrorClass);
+    await expect(sending).rejects.toMatchObject({ provider: 'smtp', code: `SMTP_${reply}` });
+  });
+
   it('returns the message id from the server and the time of the clock', async () => {
     const { sender, clock } = senderWith();
 
@@ -192,5 +210,81 @@ describe('NodemailerSmtpSender', () => {
     const result = await sender.send(message, SERVER, { ip: IP });
 
     expect(result.rejectedRecipients).toEqual(['malo@dominio.com']);
+  });
+});
+
+describe('NodemailerSmtpSender transport cache', () => {
+  it('reuses the transport for the same host, IP, port and credentials', async () => {
+    const { sender, transports } = senderWith();
+
+    await sender.send(message, SERVER, { ip: IP });
+    await sender.send(message, { ...SERVER, auth: { ...SERVER.auth! } }, { ip: IP });
+
+    expect(transports).toHaveLength(1);
+    expect(transports[0]?.mails).toHaveLength(2);
+  });
+
+  it.each([
+    { change: 'IP', server: SERVER, ip: '93.184.215.15' },
+    { change: 'user', server: { ...SERVER, auth: { ...SERVER.auth!, user: 'otro' } }, ip: IP },
+    { change: 'password', server: { ...SERVER, auth: { ...SERVER.auth!, pass: 'otra' } }, ip: IP },
+    { change: 'port', server: { ...SERVER, port: 465 as const }, ip: IP },
+  ])('creates a new transport when the $change changes', async ({ server, ip }) => {
+    const { sender, transports } = senderWith({ transportCacheMax: 5 });
+
+    await sender.send(message, SERVER, { ip: IP });
+    await sender.send(message, server, { ip });
+
+    expect(transports).toHaveLength(2);
+    expect(transports[1]?.options.host).toBe(ip);
+  });
+
+  it('closes and replaces a transport unused for longer than the TTL', async () => {
+    const { sender, transports, clock } = senderWith({ transportCacheTtlMs: 60_000 });
+
+    await sender.send(message, SERVER, { ip: IP });
+    clock.advance(60_001);
+    await sender.send(message, SERVER, { ip: IP });
+
+    expect(transports).toHaveLength(2);
+    expect(transports[0]?.closed).toBe(true);
+    expect(transports[1]?.closed).toBe(false);
+  });
+
+  it('keeps a transport that is used within the TTL', async () => {
+    const { sender, transports, clock } = senderWith({ transportCacheTtlMs: 60_000 });
+
+    await sender.send(message, SERVER, { ip: IP });
+    clock.advance(60_000);
+    await sender.send(message, SERVER, { ip: IP });
+    clock.advance(60_000);
+    await sender.send(message, SERVER, { ip: IP });
+
+    expect(transports).toHaveLength(1);
+  });
+
+  it('closes the least recently used transport when the cache is full', async () => {
+    const { sender, transports, clock } = senderWith({ transportCacheMax: 2 });
+    const serverOn = (ip: string) => [message, SERVER, { ip }] as const;
+
+    await sender.send(...serverOn('93.184.215.1'));
+    clock.advance(1);
+    await sender.send(...serverOn('93.184.215.2'));
+    clock.advance(1);
+    await sender.send(...serverOn('93.184.215.1'));
+    clock.advance(1);
+    await sender.send(...serverOn('93.184.215.3'));
+
+    expect(transports.map((transport) => transport.closed)).toEqual([false, true, false]);
+  });
+
+  it('closes every cached transport on close', async () => {
+    const { sender, transports } = senderWith({ transportCacheMax: 5 });
+    await sender.send(message, SERVER, { ip: '93.184.215.1' });
+    await sender.send(message, SERVER, { ip: '93.184.215.2' });
+
+    sender.close();
+
+    expect(transports.map((transport) => transport.closed)).toEqual([true, true]);
   });
 });

@@ -933,12 +933,12 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Credenciales en `auth` solo si la petición las trae.
 - [x] DKIM por mensaje en `sendMail`, nunca en el transporte.
 - [x] Devuelve `providerMessageId` y la hora del reloj; los rechazados parciales van en `rejectedRecipients`.
-- [ ] Reutiliza el transporte para el mismo host, IP, puerto y credenciales.
-- [ ] Crea una entrada nueva si cambia la IP, el usuario o la contraseña.
-- [ ] Caduca y cierra el transporte sin uso durante el TTL.
-- [ ] Con la caché llena, expulsa y cierra el usado hace más tiempo.
-- [ ] `close()` cierra todos los transportes.
-- [ ] Los errores del transporte salen clasificados como `TransientProviderError` o `PermanentProviderError` del proveedor `smtp`.
+- [x] Reutiliza el transporte para el mismo host, IP, puerto y credenciales.
+- [x] Crea una entrada nueva si cambia la IP, el usuario o la contraseña.
+- [x] Caduca y cierra el transporte sin uso durante el TTL.
+- [x] Con la caché llena, expulsa y cierra el usado hace más tiempo.
+- [x] `close()` cierra todos los transportes.
+- [x] Los errores del transporte salen clasificados como `TransientProviderError` o `PermanentProviderError` del proveedor `smtp`.
 
 *MailgunApiProvider (cliente simulado)*
 - [ ] Mapea remitente, destinatarios con nombre, asunto, cuerpos, `h:Reply-To`, cabeceras `h:`, `o:tag`, `v:messageId` y `h:X-Mail-Service-Id`.
