@@ -166,8 +166,10 @@ type WorkerEnv = z.output<z.ZodObject<typeof workerOnlyFields>>;
 
 // Reglas que relacionan varias variables de API y worker
 const checkServerRules = (env: CommonEnv & ServerEnv, ctx: z.RefinementCtx) => {
+  // Las reglas cruzadas se ejecutan aunque un campo sea inválido: comprobar el tipo antes de usarlo
+  const active = env.SMTP_CREDENTIALS_ENCRYPTION_KEY;
   const previous = env.SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS;
-  if (previous?.equals(env.SMTP_CREDENTIALS_ENCRYPTION_KEY)) {
+  if (Buffer.isBuffer(active) && Buffer.isBuffer(previous) && previous.equals(active)) {
     ctx.addIssue({
       code: 'custom',
       path: ['SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS'],
@@ -284,8 +286,14 @@ export type WorkerConfig = z.output<Schemas['worker']>;
 export type KeysCliConfig = z.output<Schemas['keys-cli']>;
 export type SuppressionsCliConfig = z.output<Schemas['suppressions-cli']>;
 
-export function loadConfig<K extends ProcessKind>(kind: K, env: Env): z.output<Schemas[K]> {
-  const result = schemas[kind].safeParse(env);
+// Única lectura de process.env del proyecto; los tests pasan su propio entorno
+export function loadConfig<K extends ProcessKind>(
+  kind: K,
+  env: Env = process.env,
+): z.output<Schemas[K]> {
+  // VAR= en un fichero .env equivale a no definir la variable
+  const definedEnv = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''));
+  const result = schemas[kind].safeParse(definedEnv);
   if (!result.success) {
     const issues = result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
     throw new ConfigError(kind, issues);

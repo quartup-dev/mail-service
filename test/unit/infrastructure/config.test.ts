@@ -322,6 +322,29 @@ describe('loadConfig', () => {
     expect(error.message).toContain('PORT');
   });
 
+  it('treats empty variables as unset, as in a .env file with VAR=', () => {
+    const env = {
+      ...workerEnv(),
+      SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: '',
+      LOG_LEVEL: '',
+      WORKER_MAX_ATTEMPTS: '',
+    };
+
+    const config = loadConfig('worker', env);
+
+    expect(config.smtpEncryptionKeyPrevious).toBeUndefined();
+    expect(config.logLevel).toBe('info');
+    expect(config.worker.maxAttempts).toBe(5);
+  });
+
+  it('reports an invalid previous key as a configuration error instead of crashing', () => {
+    const env = { ...workerEnv(), SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: 'not-a-key' };
+
+    expect(configErrorOf('worker', env).message).toContain(
+      'SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS',
+    );
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
