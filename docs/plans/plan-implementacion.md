@@ -14,7 +14,7 @@
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 0 | Andamiaje | Pendiente |
+| 0 | Andamiaje | Completada |
 | 1 | Dominio y casos de uso | Pendiente |
 | 2 | Persistencia, colas y worker | Pendiente |
 | 3 | API HTTP y autenticación | Pendiente |
@@ -79,11 +79,11 @@ Además del stack de CLAUDE.md:
 - `.env.example` con las variables del anexo A, sin secretos reales y con `SMTP_ALLOWED_PRIVATE_HOSTS=mailpit,localhost`.
 
 **Aceptación:**
-- [ ] `bun install` desde cero y `bun run dev` levantan la API, y `GET /health` responde 200.
-- [ ] `bun run lint`, `bun run typecheck` y `bun run test` pasan.
-- [ ] `/health`, `config.ts` y la redacción de logs tienen tests escritos antes que el código (visible en el historial de commits).
-- [ ] El proceso de la API corre sobre Node 24, no sobre Bun (comprobado con `process.versions.bun` indefinido en `/health` en desarrollo o en un test).
-- [ ] Una conexión STARTTLS a Mailpit en el 587 con `rejectUnauthorized: true` y la CA local se establece correctamente.
+- [x] `bun install` desde cero y `bun run dev` levantan la API, y `GET /health` responde 200.
+- [x] `bun run lint`, `bun run typecheck` y `bun run test` pasan.
+- [x] `/health`, `config.ts` y la redacción de logs tienen tests escritos antes que el código (visible en el historial de commits).
+- [x] El proceso de la API corre sobre Node 24, no sobre Bun (comprobado con `process.versions.bun` indefinido en `/health` en desarrollo o en un test).
+- [x] Una conexión STARTTLS a Mailpit en el 587 con `rejectUnauthorized: true` y la CA local se establece correctamente.
 
 **Casos de prueba:**
 
@@ -112,14 +112,14 @@ Además del stack de CLAUDE.md:
 - [x] El mensaje de error nunca incluye el valor de una variable secreta.
 
 *Logger*
-- [ ] Redacta la cabecera `authorization` de las peticiones.
-- [ ] Redacta `smtp.auth.pass` en la raíz y un nivel por debajo (`*.smtp.auth.pass`).
-- [ ] Redacta `dkim.privateKey` en la raíz y un nivel por debajo.
-- [ ] Redacta `apiKey` y `smtpConfigEncrypted` en la raíz y un nivel por debajo.
-- [ ] Usa el nivel de `LOG_LEVEL`.
+- [x] Redacta la cabecera `authorization` de las peticiones.
+- [x] Redacta `smtp.auth.pass` en la raíz y un nivel por debajo (`*.smtp.auth.pass`).
+- [x] Redacta `dkim.privateKey` en la raíz y un nivel por debajo.
+- [x] Redacta `apiKey` y `smtpConfigEncrypted` en la raíz y un nivel por debajo.
+- [x] Usa el nivel de `LOG_LEVEL`.
 
 *Mailpit (integración)*
-- [ ] STARTTLS en el 587 con verificación activa y la CA local se establece.
+- [x] STARTTLS en el 587 con verificación activa y la CA local se establece.
 
 ---
 
@@ -771,8 +771,8 @@ MAX_BODY_BYTES=15728640
 MAX_ATTACHMENTS_BYTES=10485760
 
 # Infraestructura
-DATABASE_URL=postgres://mail:mail@localhost:5432/mail
-REDIS_URL=redis://localhost:6379
+DATABASE_URL=postgres://mail:mail@localhost:55432/mail   # puerto publicado por docker-compose.yml
+REDIS_URL=redis://localhost:56379
 
 # Proveedor para transport=api (vacío = transporte api deshabilitado)
 MAIL_API_PROVIDER=mailgun            # mailgun | ses
