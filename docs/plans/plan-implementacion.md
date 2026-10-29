@@ -926,13 +926,13 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Error sin código (p. ej. pool cerrado) → transitorio; otro código local de Nodemailer → permanente.
 
 *NodemailerSmtpSender (cliente simulado)*
-- [ ] Crea el transporte con la IP validada, `tls.servername` igual al host original y `rejectUnauthorized: true`.
-- [ ] Con una IP literal como host no pone `servername`.
-- [ ] Puerto 465 → `secure: true`; 587 → `secure: false` y `requireTLS: true`.
-- [ ] Pool con `maxConnections`, `rateLimit`, `rateDelta: 1000`, timeouts de la configuración y sin re-encolados propios (`maxRequeues: 0`).
-- [ ] Credenciales en `auth` solo si la petición las trae.
-- [ ] DKIM por mensaje en `sendMail`, nunca en el transporte.
-- [ ] Devuelve `providerMessageId` y la hora del reloj; los rechazados parciales van en `rejectedRecipients`.
+- [x] Crea el transporte con la IP validada, `tls.servername` igual al host original y `rejectUnauthorized: true`.
+- [x] Con una IP literal como host no pone `servername`.
+- [x] Puerto 465 → `secure: true`; 587 → `secure: false` y `requireTLS: true`.
+- [x] Pool con `maxConnections`, `rateLimit`, `rateDelta: 1000`, timeouts de la configuración y sin re-encolados propios (`maxRequeues: 0`).
+- [x] Credenciales en `auth` solo si la petición las trae.
+- [x] DKIM por mensaje en `sendMail`, nunca en el transporte.
+- [x] Devuelve `providerMessageId` y la hora del reloj; los rechazados parciales van en `rejectedRecipients`.
 - [ ] Reutiliza el transporte para el mismo host, IP, puerto y credenciales.
 - [ ] Crea una entrada nueva si cambia la IP, el usuario o la contraseña.
 - [ ] Caduca y cierra el transporte sin uso durante el TTL.
