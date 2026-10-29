@@ -1,8 +1,14 @@
 import type { FastifyInstance } from 'fastify';
+import { SESv2Client } from '@aws-sdk/client-sesv2';
+import FormData from 'form-data';
 import { Redis, type RedisOptions } from 'ioredis';
+import Mailgun from 'mailgun.js';
+import nodemailer from 'nodemailer';
 import packageJson from '../../package.json' with { type: 'json' };
 import { ApplyRetention } from '../application/apply-retention';
 import type { FastifyBaseLogger as FastifyLogger } from 'fastify';
+import type { EmailApiProvider } from '../application/ports/email-api-provider';
+import type { Clock } from '../application/ports/clock';
 import type { Logger } from '../application/ports/logger';
 import { GetEmailStatus } from '../application/get-email-status';
 import { ProcessEmailJob } from '../application/process-email-job';
@@ -19,7 +25,9 @@ import { connectDatabase } from './db/client';
 import { DrizzleEmailRepository } from './db/drizzle-email-repository';
 import { DrizzleSuppressionRepository } from './db/drizzle-suppression-repository';
 import { DnsSmtpHostGuard, lookupAllAddresses } from './net/dns-smtp-host-guard';
-import { UnavailableSmtpHostGuard, UnavailableSmtpSender } from './providers/unavailable';
+import { MailgunApiProvider, mailgunClientOptions } from './providers/mailgun-api-provider';
+import { NodemailerSmtpSender } from './providers/nodemailer-smtp-sender';
+import { SesApiProvider, sesClientConfig } from './providers/ses-api-provider';
 import { BullMqEmailQueue } from './queue/bullmq-email-queue';
 import { SystemClock } from './system-clock';
 
@@ -40,6 +48,39 @@ async function closeRedis(redis: Redis): Promise<void> {
   else redis.disconnect();
 }
 
+// Un cliente del proveedor por proceso, según MAIL_API_PROVIDER; null deshabilita el transporte api
+function createApiProvider(
+  provider: WorkerConfig['mailApiProvider'],
+  clock: Clock,
+): EmailApiProvider | null {
+  switch (provider?.name) {
+    case 'mailgun':
+      return new MailgunApiProvider({
+        messages: new Mailgun(FormData).client(mailgunClientOptions(provider)).messages,
+        domain: provider.domain,
+        clock,
+      });
+    case 'ses':
+      return new SesApiProvider({
+        client: new SESv2Client(sesClientConfig(provider)),
+        configurationSet: provider.configurationSet,
+        clock,
+      });
+    default:
+      return null;
+  }
+}
+
+function createSmtpHostGuard(config: WorkerConfig | ApiConfig): DnsSmtpHostGuard {
+  return new DnsSmtpHostGuard(
+    {
+      allowedHosts: config.smtp.allowedHosts,
+      allowedPrivateHosts: config.smtp.allowedPrivateHosts,
+    },
+    lookupAllAddresses,
+  );
+}
+
 export interface WorkerContainer {
   runtime: WorkerRuntime;
   health: HealthServer;
@@ -53,6 +94,11 @@ export function createWorkerContainer(config: WorkerConfig, logger: Logger): Wor
   const redis = connectRedis(config.redisUrl, { maxRetriesPerRequest: null }, logger);
   const clock = new SystemClock();
   const emails = new DrizzleEmailRepository(db, clock);
+  const smtpSender = new NodemailerSmtpSender({
+    createTransport: (options) => nodemailer.createTransport(options),
+    clock,
+    settings: config.smtp,
+  });
   const emailQueue = new BullMqEmailQueue(redis, {
     maxAttempts: config.worker.maxAttempts,
     backoffBaseMs: config.worker.backoffBaseMs,
@@ -69,9 +115,9 @@ export function createWorkerContainer(config: WorkerConfig, logger: Logger): Wor
     processEmailJob: new ProcessEmailJob({
       emails,
       suppressions: new DrizzleSuppressionRepository(db, clock),
-      apiProvider: null, // los adaptadores de Mailgun y SES llegan en la fase 4
-      smtpSender: new UnavailableSmtpSender(),
-      smtpHostGuard: new UnavailableSmtpHostGuard(),
+      apiProvider: createApiProvider(config.mailApiProvider, clock),
+      smtpSender,
+      smtpHostGuard: createSmtpHostGuard(config),
       secretBox: new AesGcmSecretBox({
         active: config.smtpEncryptionKey,
         ...(config.smtpEncryptionKeyPrevious && { previous: config.smtpEncryptionKeyPrevious }),
@@ -113,8 +159,9 @@ export function createWorkerContainer(config: WorkerConfig, logger: Logger): Wor
   return {
     runtime,
     health,
-    // Tras cerrar el runtime (que espera a los jobs activos): colas, Redis y PostgreSQL
+    // Tras cerrar el runtime (que espera a los jobs activos): pools SMTP, colas, Redis y PostgreSQL
     async close() {
+      smtpSender.close();
       await emailQueue.close();
       await closeRedis(redis);
       await pool.end();
@@ -153,13 +200,7 @@ export function createApiContainer(
     queueEmail: new QueueEmail({
       emails,
       queue: emailQueue,
-      smtpHostGuard: new DnsSmtpHostGuard(
-        {
-          allowedHosts: config.smtp.allowedHosts,
-          allowedPrivateHosts: config.smtp.allowedPrivateHosts,
-        },
-        lookupAllAddresses,
-      ),
+      smtpHostGuard: createSmtpHostGuard(config),
       secretBox: new AesGcmSecretBox({
         active: config.smtpEncryptionKey,
         ...(config.smtpEncryptionKeyPrevious && { previous: config.smtpEncryptionKeyPrevious }),
@@ -179,7 +220,8 @@ export function createApiContainer(
       redis: async () => {
         await redis.ping();
       },
-      apiProvider: null, // verify() de Mailgun o SES en la fase 4
+      // La API no tiene las credenciales de envío del proveedor (solo las de sus webhooks)
+      apiProvider: null,
     },
     version: packageJson.version,
   });
