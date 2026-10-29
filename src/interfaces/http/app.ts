@@ -3,6 +3,8 @@ import type { Redis } from 'ioredis';
 import type { GetEmailStatus } from '../../application/get-email-status';
 import type { ApiClientRepository } from '../../application/ports/api-client-repository';
 import type { QueueEmail } from '../../application/queue-email';
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+import { emailRoutes } from './routes/emails';
 import { registerErrorHandling } from './plugins/error-handling';
 import { exposeRequestId, generateRequestId } from './plugins/request-id';
 import { healthRoutes, type ApiReadinessChecks } from './routes/health';
@@ -28,8 +30,14 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     ...(deps.logger && { loggerInstance: deps.logger }),
     genReqId: generateRequestId,
   });
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
   exposeRequestId(app);
   registerErrorHandling(app);
   void app.register(healthRoutes, { readiness: deps.readiness });
+  void app.register(emailRoutes, {
+    apiClients: deps.apiClients,
+    getEmailStatus: deps.getEmailStatus,
+  });
   return app;
 }
