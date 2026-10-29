@@ -5,6 +5,7 @@ export default defineConfig({
     server: 'src/server.ts',
     worker: 'src/worker.ts',
     'scripts/migrate': 'scripts/migrate.ts',
+    'scripts/keys': 'scripts/keys.ts',
   },
   format: ['esm'],
   platform: 'node',
