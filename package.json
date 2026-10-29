@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
+    "test:coverage": "vitest run --project unit --coverage",
     "test:integration": "NODE_EXTRA_CA_CERTS=./docker/dev-certs/ca.pem vitest run --project integration",
     "db:generate": "echo 'Pendiente: fase 2' && exit 1",
     "db:migrate": "echo 'Pendiente: fase 2' && exit 1",

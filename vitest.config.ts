@@ -2,6 +2,13 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // Solo se mide con --coverage (bun run test:coverage)
+    coverage: {
+      provider: 'v8',
+      include: ['src/domain/**/*.ts', 'src/application/**/*.ts'],
+      reporter: ['text', 'html'],
+      thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
+    },
     projects: [
       {
         test: {

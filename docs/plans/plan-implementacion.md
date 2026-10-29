@@ -15,7 +15,7 @@
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Andamiaje | Completada |
-| 1 | Dominio y casos de uso | En curso |
+| 1 | Dominio y casos de uso | Completada |
 | 2 | Persistencia, colas y worker | Pendiente |
 | 3 | API HTTP y autenticación | Pendiente |
 | 4 | Proveedores reales | Pendiente |
@@ -386,124 +386,124 @@ export interface ApiClientRepository {
 - Rotación (a documentar en el README): mover la clave actual a `..._PREVIOUS`, poner la nueva como activa y desplegar API y worker. Pasadas `PENDING_MAX_AGE_MS`, retirar `..._PREVIOUS`.
 
 **Aceptación** (tests unitarios, sin infraestructura real):
-- [ ] Flujo completo de envío por ambos transportes.
-- [ ] Idempotencia: misma key y cuerpo devuelve el existente y lo re-encola si está pendiente; cuerpo distinto da conflicto; el hash no depende de la contraseña SMTP en claro.
-- [ ] Supresión: aplicada solo con `api`, parcial y total.
-- [ ] Estado por destinatario: `accepted`/`rejected` en SMTP; transiciones monótonas con eventos desordenados y duplicados; un `delivered` que llega antes del resultado del worker no se pisa con `accepted`; `suppressed` y `rejected` no cambian.
-- [ ] Reintentos: un error transitorio en el último intento deja `failed`; un error permanente deja `failed` y se relanza como `PermanentProviderError`.
-- [ ] Reglas de coincidencia de dominios: exacto, comodín, dominio raíz no cubierto por `*.`, mayúsculas.
-- [ ] Cifrado, borrado de credenciales SMTP en estado final, descifrado con la clave anterior y `SMTP_CONFIG_UNDECRYPTABLE` con clave desconocida.
-- [ ] Barrido: re-encolado de pendientes y caducidad `EXPIRED` con borrado de credenciales.
-- [ ] Rechazo de `api` sin proveedor configurado.
-- [ ] Cobertura ≥ 80 % en `domain/` y `application/`.
+- [x] Flujo completo de envío por ambos transportes.
+- [x] Idempotencia: misma key y cuerpo devuelve el existente y lo re-encola si está pendiente; cuerpo distinto da conflicto; el hash no depende de la contraseña SMTP en claro.
+- [x] Supresión: aplicada solo con `api`, parcial y total.
+- [x] Estado por destinatario: `accepted`/`rejected` en SMTP; transiciones monótonas con eventos desordenados y duplicados; un `delivered` que llega antes del resultado del worker no se pisa con `accepted`; `suppressed` y `rejected` no cambian.
+- [x] Reintentos: un error transitorio en el último intento deja `failed`; un error permanente deja `failed` y se relanza como `PermanentProviderError`.
+- [x] Reglas de coincidencia de dominios: exacto, comodín, dominio raíz no cubierto por `*.`, mayúsculas.
+- [x] Cifrado, borrado de credenciales SMTP en estado final, descifrado con la clave anterior y `SMTP_CONFIG_UNDECRYPTABLE` con clave desconocida.
+- [x] Barrido: re-encolado de pendientes y caducidad `EXPIRED` con borrado de credenciales.
+- [x] Rechazo de `api` sin proveedor configurado.
+- [x] Cobertura ≥ 80 % en `domain/` y `application/`.
 
 **Casos de prueba:**
 
 *Dominio: coincidencia de dominios (`matchesDomainPattern`)*
-- [ ] Un dominio exacto coincide sin distinguir mayúsculas.
-- [ ] Un dominio exacto no coincide con sus subdominios.
-- [ ] `*.example.com` coincide con subdominios de cualquier nivel.
-- [ ] `*.example.com` no coincide con `example.com`.
-- [ ] Un patrón no coincide con un dominio que solo termina igual (`badexample.com`).
+- [x] Un dominio exacto coincide sin distinguir mayúsculas.
+- [x] Un dominio exacto no coincide con sus subdominios.
+- [x] `*.example.com` coincide con subdominios de cualquier nivel.
+- [x] `*.example.com` no coincide con `example.com`.
+- [x] Un patrón no coincide con un dominio que solo termina igual (`badexample.com`).
 
 *Dominio: estado por destinatario*
-- [ ] El estado avanza a un rango mayor.
-- [ ] El estado no retrocede ni cambia con el mismo rango.
-- [ ] `suppressed` y `rejected` son finales.
+- [x] El estado avanza a un rango mayor.
+- [x] El estado no retrocede ni cambia con el mismo rango.
+- [x] `suppressed` y `rejected` son finales.
 
 *SecretBox (`AesGcmSecretBox`)*
-- [ ] Descifra lo que cifra.
-- [ ] El texto cifrado tiene el formato `<keyId>:<base64url>` con el `keyId` de la clave activa.
-- [ ] Dos cifrados del mismo texto son distintos (IV aleatorio).
-- [ ] Descifra con la clave anterior.
-- [ ] Un `keyId` desconocido lanza `UndecryptableSecretError`.
-- [ ] Un texto cifrado manipulado o mal formado lanza `UndecryptableSecretError`.
+- [x] Descifra lo que cifra.
+- [x] El texto cifrado tiene el formato `<keyId>:<base64url>` con el `keyId` de la clave activa.
+- [x] Dos cifrados del mismo texto son distintos (IV aleatorio).
+- [x] Descifra con la clave anterior.
+- [x] Un `keyId` desconocido lanza `UndecryptableSecretError`.
+- [x] Un texto cifrado manipulado o mal formado lanza `UndecryptableSecretError`.
 
 *Hash de la petición (`computeRequestHash`)*
-- [ ] La misma petición produce el mismo hash.
-- [ ] Peticiones distintas producen hashes distintos.
-- [ ] Con SMTP, el hash depende del *pepper*: la contraseña y la clave DKIM entran como HMAC, no en claro.
-- [ ] Cambiar la contraseña SMTP o la clave DKIM cambia el hash.
+- [x] La misma petición produce el mismo hash.
+- [x] Peticiones distintas producen hashes distintos.
+- [x] Con SMTP, el hash depende del *pepper*: la contraseña y la clave DKIM entran como HMAC, no en claro.
+- [x] Cambiar la contraseña SMTP o la clave DKIM cambia el hash.
 
 *Repositorio de emails en memoria (contrato del puerto, reutilizable en la fase 2)*
-- [ ] `create` guarda el mensaje en `queued` con sus destinatarios en `pending`, en minúsculas y con su tipo.
-- [ ] `create` guarda transporte, host y puerto SMTP y la configuración cifrada.
-- [ ] `create` con la misma `idempotencyKey` y cliente devuelve el existente con `created = false`.
-- [ ] La misma `idempotencyKey` en otro cliente crea un mensaje nuevo.
-- [ ] `findById` devuelve `null` si no existe, y modificar lo devuelto no altera lo guardado.
-- [ ] `findByProviderMessageId` encuentra por proveedor e id.
-- [ ] `updateStatus` aplica el estado, el *patch* y `updatedAt`.
-- [ ] `recordAttempt` añade intentos.
-- [ ] `setRecipientStatuses` avanza los estados y no los retrocede.
-- [ ] `advanceRecipientStatus` devuelve si aplicó la transición (también con un destinatario desconocido).
-- [ ] `findPending` filtra por estado pendiente, `createdBefore`, `updatedBefore` y límite.
-- [ ] `recordEvent` y `deleteEvents` borran solo los eventos anteriores a la fecha, hasta el límite.
-- [ ] `clearPayloads` vacía solo payloads de mensajes finales anteriores a la fecha, hasta el límite, y no cuenta los ya vacíos.
-- [ ] `deleteFinalEmails` borra solo mensajes finales anteriores a la fecha, con sus eventos, hasta el límite.
+- [x] `create` guarda el mensaje en `queued` con sus destinatarios en `pending`, en minúsculas y con su tipo.
+- [x] `create` guarda transporte, host y puerto SMTP y la configuración cifrada.
+- [x] `create` con la misma `idempotencyKey` y cliente devuelve el existente con `created = false`.
+- [x] La misma `idempotencyKey` en otro cliente crea un mensaje nuevo.
+- [x] `findById` devuelve `null` si no existe, y modificar lo devuelto no altera lo guardado.
+- [x] `findByProviderMessageId` encuentra por proveedor e id.
+- [x] `updateStatus` aplica el estado, el *patch* y `updatedAt`.
+- [x] `recordAttempt` añade intentos.
+- [x] `setRecipientStatuses` avanza los estados y no los retrocede.
+- [x] `advanceRecipientStatus` devuelve si aplicó la transición (también con un destinatario desconocido).
+- [x] `findPending` filtra por estado pendiente, `createdBefore`, `updatedBefore` y límite.
+- [x] `recordEvent` y `deleteEvents` borran solo los eventos anteriores a la fecha, hasta el límite.
+- [x] `clearPayloads` vacía solo payloads de mensajes finales anteriores a la fecha, hasta el límite, y no cuenta los ya vacíos.
+- [x] `deleteFinalEmails` borra solo mensajes finales anteriores a la fecha, con sus eventos, hasta el límite.
 
 *Repositorio de supresiones en memoria (contrato del puerto)*
-- [ ] `findSuppressed` devuelve las direcciones suprimidas sin distinguir mayúsculas.
-- [ ] `add` es idempotente y `remove` quita la dirección.
-- [ ] `list` filtra por motivo y pagina.
+- [x] `findSuppressed` devuelve las direcciones suprimidas sin distinguir mayúsculas.
+- [x] `add` es idempotente y `remove` quita la dirección.
+- [x] `list` filtra por motivo y pagina.
 
 *QueueEmail*
-- [ ] Con `api`: crea el mensaje en `queued` y lo encola en la cola `api`.
-- [ ] Rechaza un transporte no permitido al cliente (`TRANSPORT_NOT_ALLOWED`).
-- [ ] Rechaza `api` sin proveedor configurado (`API_TRANSPORT_NOT_CONFIGURED`).
-- [ ] Con `api`, valida el dominio de `from` con los dominios del cliente; si no tiene, con los globales (`FROM_DOMAIN_NOT_ALLOWED`).
-- [ ] Con `smtp`: rechaza un host que el guard no permite (`SMTP_HOST_NOT_ALLOWED`).
-- [ ] Con `smtp`: guarda la configuración cifrada (incluida DKIM) y el `payload` sin contraseña ni clave DKIM.
-- [ ] Con `smtp`: no valida el dominio de `from`.
-- [ ] Si el `enqueue` falla, registra un aviso y devuelve igualmente `queued`.
-- [ ] Idempotencia: misma key y cuerpo devuelve el existente y lo re-encola si está pendiente.
-- [ ] Idempotencia: un existente en estado final no se re-encola.
-- [ ] Idempotencia: misma key y cuerpo SMTP no da conflicto aunque el cifrado cambie.
-- [ ] Idempotencia: misma key con otro cuerpo da `IDEMPOTENCY_CONFLICT`.
+- [x] Con `api`: crea el mensaje en `queued` y lo encola en la cola `api`.
+- [x] Rechaza un transporte no permitido al cliente (`TRANSPORT_NOT_ALLOWED`).
+- [x] Rechaza `api` sin proveedor configurado (`API_TRANSPORT_NOT_CONFIGURED`).
+- [x] Con `api`, valida el dominio de `from` con los dominios del cliente; si no tiene, con los globales (`FROM_DOMAIN_NOT_ALLOWED`).
+- [x] Con `smtp`: rechaza un host que el guard no permite (`SMTP_HOST_NOT_ALLOWED`).
+- [x] Con `smtp`: guarda la configuración cifrada (incluida DKIM) y el `payload` sin contraseña ni clave DKIM.
+- [x] Con `smtp`: no valida el dominio de `from`.
+- [x] Si el `enqueue` falla, registra un aviso y devuelve igualmente `queued`.
+- [x] Idempotencia: misma key y cuerpo devuelve el existente y lo re-encola si está pendiente.
+- [x] Idempotencia: un existente en estado final no se re-encola.
+- [x] Idempotencia: misma key y cuerpo SMTP no da conflicto aunque el cifrado cambie.
+- [x] Idempotencia: misma key con otro cuerpo da `IDEMPOTENCY_CONFLICT`.
 
 *ProcessEmailJob*
-- [ ] Con `api`: envía, deja `sent` con proveedor, `providerMessageId` y `sentAt`, destinatarios en `accepted` y un intento `success`.
-- [ ] Con `smtp`: descifra la configuración, valida el host, envía a la IP validada y borra la configuración cifrada.
-- [ ] Con `smtp`: los destinatarios rechazados quedan en `rejected` y el resto en `accepted`.
-- [ ] Un mensaje en estado final o inexistente no se envía.
-- [ ] Un mensaje en `sending` se envía.
-- [ ] Supresión parcial con `api`: los suprimidos quedan en `suppressed` y no se les envía.
-- [ ] Supresión total con `api`: el mensaje queda en `suppressed` y no se envía.
-- [ ] La supresión no se aplica con `smtp`.
-- [ ] Un `delivered` registrado antes del resultado del worker no se pisa con `accepted`.
-- [ ] Error transitorio con intentos restantes: vuelve a `queued`, registra el intento y relanza.
-- [ ] Error transitorio en el último intento: `failed` con código y motivo, y configuración SMTP borrada.
-- [ ] Error permanente: `failed`, configuración SMTP borrada y relanza `PermanentProviderError`.
-- [ ] Un error sin clasificar se trata como transitorio.
-- [ ] Configuración cifrada con la clave anterior: se descifra y se envía.
-- [ ] Clave desconocida: `failed` con `SMTP_CONFIG_UNDECRYPTABLE` como error permanente.
-- [ ] Host rechazado por el guard en el worker: `failed` con `SMTP_HOST_NOT_ALLOWED` como error permanente.
-- [ ] `api` sin proveedor configurado en el worker: `failed` con `API_TRANSPORT_NOT_CONFIGURED`.
+- [x] Con `api`: envía, deja `sent` con proveedor, `providerMessageId` y `sentAt`, destinatarios en `accepted` y un intento `success`.
+- [x] Con `smtp`: descifra la configuración, valida el host, envía a la IP validada y borra la configuración cifrada.
+- [x] Con `smtp`: los destinatarios rechazados quedan en `rejected` y el resto en `accepted`.
+- [x] Un mensaje en estado final o inexistente no se envía.
+- [x] Un mensaje en `sending` se envía.
+- [x] Supresión parcial con `api`: los suprimidos quedan en `suppressed` y no se les envía.
+- [x] Supresión total con `api`: el mensaje queda en `suppressed` y no se envía.
+- [x] La supresión no se aplica con `smtp`.
+- [x] Un `delivered` registrado antes del resultado del worker no se pisa con `accepted`.
+- [x] Error transitorio con intentos restantes: vuelve a `queued`, registra el intento y relanza.
+- [x] Error transitorio en el último intento: `failed` con código y motivo, y configuración SMTP borrada.
+- [x] Error permanente: `failed`, configuración SMTP borrada y relanza `PermanentProviderError`.
+- [x] Un error sin clasificar se trata como transitorio.
+- [x] Configuración cifrada con la clave anterior: se descifra y se envía.
+- [x] Clave desconocida: `failed` con `SMTP_CONFIG_UNDECRYPTABLE` como error permanente.
+- [x] Host rechazado por el guard en el worker: `failed` con `SMTP_HOST_NOT_ALLOWED` como error permanente.
+- [x] `api` sin proveedor configurado en el worker: `failed` con `API_TRANSPORT_NOT_CONFIGURED`.
 
 *Flujo completo*
-- [ ] `QueueEmail` + `ProcessEmailJob` por `api` termina en `sent`.
-- [ ] `QueueEmail` + `ProcessEmailJob` por `smtp` termina en `sent` sin configuración cifrada.
+- [x] `QueueEmail` + `ProcessEmailJob` por `api` termina en `sent`.
+- [x] `QueueEmail` + `ProcessEmailJob` por `smtp` termina en `sent` sin configuración cifrada.
 
 *HandleProviderEvent*
-- [ ] Correlaciona por id interno y avanza solo el destinatario afectado.
-- [ ] Sin id interno, correlaciona por (`provider`, `providerMessageId`).
-- [ ] Un evento sin correlación se guarda con `emailId` nulo.
-- [ ] Eventos desordenados o duplicados se guardan, pero no retroceden el estado.
-- [ ] Rebote, queja y baja añaden la dirección a supresión con su motivo; `delivered` y fallos temporales no.
+- [x] Correlaciona por id interno y avanza solo el destinatario afectado.
+- [x] Sin id interno, correlaciona por (`provider`, `providerMessageId`).
+- [x] Un evento sin correlación se guarda con `emailId` nulo.
+- [x] Eventos desordenados o duplicados se guardan, pero no retroceden el estado.
+- [x] Rebote, queja y baja añaden la dirección a supresión con su motivo; `delivered` y fallos temporales no.
 
 *GetEmailStatus*
-- [ ] Devuelve el mensaje del cliente que pregunta.
-- [ ] Devuelve "no encontrado" para un mensaje de otro cliente o inexistente.
+- [x] Devuelve el mensaje del cliente que pregunta.
+- [x] Devuelve "no encontrado" para un mensaje de otro cliente o inexistente.
 
 *SweepPendingEmails*
-- [ ] Caduca los pendientes con más de `PENDING_MAX_AGE_MS` (`failed`, `EXPIRED`, configuración borrada).
-- [ ] Re-encola los pendientes sin actividad en `STALE_PENDING_AFTER_MS`.
-- [ ] No toca mensajes recientes ni finales.
-- [ ] Caduca por lotes hasta que no quedan.
+- [x] Caduca los pendientes con más de `PENDING_MAX_AGE_MS` (`failed`, `EXPIRED`, configuración borrada).
+- [x] Re-encola los pendientes sin actividad en `STALE_PENDING_AFTER_MS`.
+- [x] No toca mensajes recientes ni finales.
+- [x] Caduca por lotes hasta que no quedan.
 
 *ApplyRetention*
-- [ ] Vacía payloads, borra eventos y borra mensajes finales según sus plazos.
-- [ ] No toca mensajes pendientes.
-- [ ] Procesa por lotes hasta que no quedan filas.
+- [x] Vacía payloads, borra eventos y borra mensajes finales según sus plazos.
+- [x] No toca mensajes pendientes.
+- [x] Procesa por lotes hasta que no quedan filas.
 
 ---
 
