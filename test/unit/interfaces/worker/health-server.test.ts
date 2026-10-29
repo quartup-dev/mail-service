@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { HealthServer, type ReadinessChecks } from '../../../../src/interfaces/worker/health-server';
+import {
+  HealthServer,
+  type ReadinessChecks,
+} from '../../../../src/interfaces/worker/health-server';
 
 const healthy = (): ReadinessChecks => ({
   postgres: async () => {},

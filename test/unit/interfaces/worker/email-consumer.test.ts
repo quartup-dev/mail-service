@@ -6,7 +6,10 @@ import { PermanentProviderError, TransientProviderError } from '../../../../src/
 import { AesGcmSecretBox } from '../../../../src/infrastructure/crypto/aes-gcm-secret-box';
 import { InMemoryEmailRepository } from '../../../../src/infrastructure/db/in-memory/in-memory-email-repository';
 import { InMemorySuppressionRepository } from '../../../../src/infrastructure/db/in-memory/in-memory-suppression-repository';
-import { createEmailProcessor, type EmailJob } from '../../../../src/interfaces/worker/email-consumer';
+import {
+  createEmailProcessor,
+  type EmailJob,
+} from '../../../../src/interfaces/worker/email-consumer';
 import { messageFrom } from '../../../support/email-messages';
 import { FakeClock } from '../../../support/fake-clock';
 import { FakeLogger } from '../../../support/fake-logger';
