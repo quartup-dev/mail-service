@@ -11,6 +11,10 @@ import {
 import { createEmailProcessor } from './email-consumer';
 import { createMaintenanceProcessor, type MaintenanceUseCases } from './maintenance-consumer';
 
+// Un job por intervalo: sin limpieza, Redis acumularía uno por barrido para siempre. Se guardan
+// los últimos fallidos para diagnosticarlos
+const MAINTENANCE_JOB_OPTIONS = { removeOnComplete: true, removeOnFail: { count: 100 } };
+
 export interface WorkerRuntimeOptions {
   connection: ConnectionOptions; // con maxRetriesPerRequest: null, como exige BullMQ
   prefix?: string;
@@ -46,9 +50,16 @@ export class WorkerRuntime {
         }),
       );
     }
-    this.workers.push(
-      this.createWorker(MAINTENANCE_QUEUE, createMaintenanceProcessor(maintenance), {}),
+    const maintenanceWorker = this.createWorker(
+      MAINTENANCE_QUEUE,
+      createMaintenanceProcessor(maintenance),
+      {},
     );
+    // Los envíos registran sus fallos en ProcessEmailJob; los de mantenimiento, aquí
+    maintenanceWorker.on('failed', (job, error) =>
+      this.options.logger.error({ err: error, job: job?.name }, 'Maintenance job failed'),
+    );
+    this.workers.push(maintenanceWorker);
     await this.scheduleMaintenance();
   }
 
@@ -90,12 +101,12 @@ export class WorkerRuntime {
     await this.maintenanceQueue.upsertJobScheduler(
       MAINTENANCE_JOBS.sweepPendingEmails,
       { every: this.options.sweepIntervalMs },
-      { name: MAINTENANCE_JOBS.sweepPendingEmails },
+      { name: MAINTENANCE_JOBS.sweepPendingEmails, opts: MAINTENANCE_JOB_OPTIONS },
     );
     await this.maintenanceQueue.upsertJobScheduler(
       MAINTENANCE_JOBS.applyRetention,
       { every: this.options.retentionIntervalMs },
-      { name: MAINTENANCE_JOBS.applyRetention },
+      { name: MAINTENANCE_JOBS.applyRetention, opts: MAINTENANCE_JOB_OPTIONS },
     );
   }
 }

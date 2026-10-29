@@ -28,6 +28,16 @@ import { resetTables, TEST_DATABASE_URL, TEST_REDIS_URL } from '../../support/in
 import { waitFor } from '../../support/wait-for';
 
 const MAX_ATTEMPTS = 3;
+
+// Cuenta las consultas de pendientes para saber cuántos barridos se han ejecutado (dos por barrido)
+class CountingEmailRepository extends DrizzleEmailRepository {
+  findPendingCalls = 0;
+
+  override findPending(...args: Parameters<DrizzleEmailRepository['findPending']>) {
+    this.findPendingCalls++;
+    return super.findPending(...args);
+  }
+}
 const MINUTE = 60_000;
 
 const connection = new Redis(TEST_REDIS_URL, { maxRetriesPerRequest: null });
@@ -49,7 +59,7 @@ describe('WorkerRuntime', () => {
     await resetTables(db);
     const prefix = `test-${randomUUID()}`;
     const clock = new FakeClock();
-    const emails = new DrizzleEmailRepository(db, clock);
+    const emails = new CountingEmailRepository(db, clock);
     const suppressions = new DrizzleSuppressionRepository(db, clock);
     const emailQueue = new BullMqEmailQueue(connection, {
       maxAttempts: MAX_ATTEMPTS,
@@ -74,7 +84,7 @@ describe('WorkerRuntime', () => {
       requestHashPepper: Buffer.alloc(32, 3),
     });
 
-    const createRuntime = () =>
+    const createRuntime = (runtimeOverrides: Partial<WorkerRuntimeOptions>) =>
       new WorkerRuntime({
         connection,
         prefix,
@@ -113,10 +123,11 @@ describe('WorkerRuntime', () => {
         },
         logger,
         ...overrides,
+        ...runtimeOverrides,
       });
 
-    const startRuntime = async () => {
-      const runtime = createRuntime();
+    const startRuntime = async (runtimeOverrides: Partial<WorkerRuntimeOptions> = {}) => {
+      const runtime = createRuntime(runtimeOverrides);
       cleanups.push(() => runtime.close());
       await runtime.start();
       return runtime;
@@ -141,11 +152,13 @@ describe('WorkerRuntime', () => {
       ).email.id;
 
     const statusOf = async (id: string) => (await emails.findById(id))?.status;
-    const waitForStatus = (id: string, status: EmailStatus) =>
-      waitFor(async () => (await statusOf(id)) === status);
+    const waitForStatus = (id: string, status: EmailStatus, options?: { timeoutMs?: number }) =>
+      waitFor(async () => (await statusOf(id)) === status, options);
 
     return {
       prefix,
+      logger,
+      emailQueue,
       clock,
       emails,
       apiProvider,
@@ -169,7 +182,7 @@ describe('WorkerRuntime', () => {
     expect((await emails.findById(smtpId))?.smtpConfigEncrypted).toBeNull();
   });
 
-  it('sends a message stored without a job thanks to the sweep', async () => {
+  it('sends a message stored without a job thanks to the periodic sweep', async () => {
     const { clock, emails, waitForStatus, startRuntime, apiProvider } = await setup();
     const { email } = await emails.create({
       message: messageFrom(apiRequest()),
@@ -178,9 +191,11 @@ describe('WorkerRuntime', () => {
       requestHash: 'hash',
     });
     await startRuntime();
+    // El scheduler ejecuta un barrido al registrarse; el mensaje aún no está sin actividad
+    await waitFor(() => emails.findPendingCalls >= 2);
     clock.advance(10 * MINUTE + 1);
 
-    await waitForStatus(email.id, 'sent');
+    await waitForStatus(email.id, 'sent', { timeoutMs: 2_000 });
     expect(apiProvider.sent.map((message) => message.id)).toEqual([email.id]);
   });
 
@@ -270,5 +285,76 @@ describe('WorkerRuntime', () => {
     release();
     await closing;
     expect(await statusOf(id)).toBe('sent');
+  });
+
+  it('processes as many api messages in parallel as the api concurrency', async () => {
+    const { send, apiProvider, startRuntime } = await setup({ concurrency: { api: 2, smtp: 1 } });
+    const release = apiProvider.hold();
+    await startRuntime();
+
+    for (let i = 0; i < 3; i++) await send(apiRequest());
+
+    await waitFor(() => apiProvider.startedCount === 2);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(apiProvider.startedCount).toBe(2);
+    release();
+  });
+
+  it('limits the api queue to the configured messages per second', async () => {
+    const { send, apiProvider, startRuntime } = await setup({ apiRateLimitPerSecond: 2 });
+    await startRuntime();
+
+    for (let i = 0; i < 4; i++) await send(apiRequest());
+
+    await waitFor(() => apiProvider.sent.length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(apiProvider.sent).toHaveLength(2);
+    await waitFor(() => apiProvider.sent.length === 4, { timeoutMs: 3_000 });
+  });
+
+  it('does not keep finished maintenance jobs in Redis', async () => {
+    const { prefix, emails, startRuntime } = await setup();
+    await startRuntime();
+
+    // Dos barridos: el primero ya ha terminado
+    await waitFor(() => emails.findPendingCalls >= 4);
+
+    const maintenance = new Queue('maintenance', { connection, prefix });
+    const counts = await maintenance.getJobCounts('completed', 'failed');
+    await maintenance.close();
+    expect(counts).toEqual({ completed: 0, failed: 0 });
+  });
+
+  it('logs a failed maintenance job', async () => {
+    const { logger, emails, emailQueue, startRuntime } = await setup();
+    const failingEmails = Object.create(emails) as CountingEmailRepository;
+    failingEmails.findPending = () => Promise.reject(new Error('database unavailable'));
+    const clock = new FakeClock();
+
+    await startRuntime({
+      maintenance: {
+        sweepPendingEmails: new SweepPendingEmails({
+          emails: failingEmails,
+          queue: emailQueue,
+          clock,
+          pendingMaxAgeMs: MINUTE,
+          stalePendingAfterMs: MINUTE,
+          batchSize: 10,
+        }),
+        applyRetention: new ApplyRetention({
+          emails,
+          clock,
+          payloadRetentionDays: 7,
+          eventsRetentionDays: 90,
+          messageRetentionDays: 365,
+          batchSize: 10,
+        }),
+      },
+    });
+
+    await waitFor(() => logger.entries.some((entry) => entry.message === 'Maintenance job failed'));
+    expect(
+      logger.entries.find((entry) => entry.message === 'Maintenance job failed'),
+    ).toMatchObject({ level: 'error', bindings: { job: 'sweep-pending-emails' } });
   });
 });
