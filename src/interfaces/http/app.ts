@@ -3,6 +3,8 @@ import type { Redis } from 'ioredis';
 import type { GetEmailStatus } from '../../application/get-email-status';
 import type { ApiClientRepository } from '../../application/ports/api-client-repository';
 import type { QueueEmail } from '../../application/queue-email';
+import { registerErrorHandling } from './plugins/error-handling';
+import { exposeRequestId, generateRequestId } from './plugins/request-id';
 import { healthRoutes, type ApiReadinessChecks } from './routes/health';
 
 export interface AppDependencies {
@@ -22,7 +24,12 @@ export interface AppDependencies {
 
 // Crea la app sin abrir puerto: server.ts llama a listen y los tests usan inject()
 export function buildApp(deps: AppDependencies): FastifyInstance {
-  const app = Fastify(deps.logger ? { loggerInstance: deps.logger } : {});
+  const app = Fastify({
+    ...(deps.logger && { loggerInstance: deps.logger }),
+    genReqId: generateRequestId,
+  });
+  exposeRequestId(app);
+  registerErrorHandling(app);
   void app.register(healthRoutes, { readiness: deps.readiness });
   return app;
 }
