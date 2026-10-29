@@ -27,6 +27,9 @@ export interface EmailMessage {
   transport: TransportSpec;
 }
 
+// Petición de envío tal como llega del cliente: el id lo genera el servicio
+export type EmailRequest = Omit<EmailMessage, 'id'>;
+
 export type TransportType = 'smtp' | 'api';
 
 export type TransportSpec =
