@@ -941,10 +941,10 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Los errores del transporte salen clasificados como `TransientProviderError` o `PermanentProviderError` del proveedor `smtp`.
 
 *MailgunApiProvider (cliente simulado)*
-- [ ] Mapea remitente, destinatarios con nombre, asunto, cuerpos, `h:Reply-To`, cabeceras `h:`, `o:tag`, `v:messageId` y `h:X-Mail-Service-Id`.
-- [ ] Adjuntos como `attachment` con nombre y tipo; los que tienen `contentId`, como `inline` con ese nombre.
-- [ ] Envía al dominio configurado y devuelve el id sin `<>` y la hora del reloj.
-- [ ] Con `to` vacío lanza `PermanentProviderError` `MAILGUN_TO_REQUIRED` sin llamar a la API.
+- [x] Mapea remitente, destinatarios con nombre, asunto, cuerpos, `h:Reply-To`, cabeceras `h:`, `o:tag`, `v:messageId` y `h:X-Mail-Service-Id`.
+- [x] Adjuntos como `attachment` con nombre y tipo; los que tienen `contentId`, como `inline` con ese nombre.
+- [x] Envía al dominio configurado y devuelve el id sin `<>` y la hora del reloj.
+- [x] Con `to` vacío lanza `PermanentProviderError` `MAILGUN_TO_REQUIRED` sin llamar a la API.
 - [ ] HTTP 429 y 5xx → transitorio; 400, 401, 403 y 404 → permanente.
 - [ ] Errores de red (que `mailgun.js` entrega con estado 400 y el código de error como mensaje) → transitorio.
 - [ ] Por defecto: 408 → transitorio; otro 4xx y errores locales → permanente.
