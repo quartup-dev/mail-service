@@ -70,7 +70,9 @@ const apiOnlyFields = {
 };
 
 const workerOnlyFields = {
-  WORKER_QUEUES: commaList.transform((queues) => (queues.length > 0 ? queues : ['api', 'smtp'])),
+  WORKER_QUEUES: commaList
+    .pipe(z.array(z.enum(['api', 'smtp'])))
+    .transform((queues) => (queues.length > 0 ? queues : (['api', 'smtp'] as const))),
   WORKER_HEALTH_PORT: positiveInt(3001),
   WORKER_API_CONCURRENCY: positiveInt(10),
   WORKER_API_RATE_LIMIT_PER_SECOND: positiveInt(10),

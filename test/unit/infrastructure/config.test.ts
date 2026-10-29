@@ -165,6 +165,20 @@ describe('loadConfig', () => {
     expect(loadConfig('worker', env).maintenance.messageRetentionDays).toBe(30);
   });
 
+  describe('WORKER_QUEUES', () => {
+    it('accepts a single queue', () => {
+      const env = { ...workerEnv(), WORKER_QUEUES: 'smtp' };
+
+      expect(loadConfig('worker', env).worker.queues).toEqual(['smtp']);
+    });
+
+    it('rejects unknown queues', () => {
+      const env = { ...workerEnv(), WORKER_QUEUES: 'api,maintenance' };
+
+      expect(configErrorOf('worker', env).message).toContain('WORKER_QUEUES');
+    });
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
