@@ -300,6 +300,28 @@ describe('loadConfig', () => {
     });
   });
 
+  it.each([
+    ['not a number', 'abc'],
+    ['a decimal', '1.5'],
+    ['zero', '0'],
+    ['negative', '-3'],
+  ])('rejects a numeric variable that is %s', (_label, value) => {
+    const env = { ...apiEnv(), PORT: value };
+
+    expect(configErrorOf('api', env).message).toContain('PORT');
+  });
+
+  it('reports every problem in a single error', () => {
+    const env = { ...apiEnv(), DATABASE_URL: undefined, REDIS_URL: undefined, PORT: 'abc' };
+
+    const error = configErrorOf('api', env);
+
+    expect(error.issues).toHaveLength(3);
+    expect(error.message).toContain('DATABASE_URL');
+    expect(error.message).toContain('REDIS_URL');
+    expect(error.message).toContain('PORT');
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
