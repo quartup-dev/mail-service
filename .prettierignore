@@ -4,3 +4,4 @@ docs/
 .claude/
 bun.lock
 docker/dev-certs/
+drizzle/

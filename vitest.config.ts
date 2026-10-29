@@ -23,6 +23,9 @@ export default defineConfig({
           include: ['test/integration/**/*.test.ts'],
           environment: 'node',
           testTimeout: 30_000,
+          globalSetup: ['test/integration/global-setup.ts'],
+          // Comparten base de datos y Redis: un fichero cada vez
+          fileParallelism: false,
         },
       },
     ],
