@@ -122,6 +122,19 @@ describe('GET /v1/emails/:id', () => {
     expect(response.body).not.toContain('encrypted-config');
   });
 
+  it('logs authenticated requests with the client id', async () => {
+    const built = buildTestApp();
+    app = built.app;
+
+    await app.inject({ method: 'GET', url: `/v1/emails/${UNKNOWN_ID}`, headers: auth(CRM_KEY) });
+
+    const completed = built
+      .logs()
+      .split('\n')
+      .find((line) => line.includes('request completed'));
+    expect(completed).toContain('"clientId":"crm"');
+  });
+
   it("responds 404 for another client's message", async () => {
     const { app, id } = await setupWithSentSmtpEmail();
 

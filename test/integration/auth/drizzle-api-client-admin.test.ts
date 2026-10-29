@@ -135,14 +135,12 @@ describe('DrizzleApiClientAdmin', () => {
 
   it('never exceeds two active keys with simultaneous creations', async () => {
     await admin.createClient('billing', SETTINGS);
-    await admin.createKey('billing');
 
-    const results = await Promise.allSettled([
-      admin.createKey('billing'),
-      admin.createKey('billing'),
-    ]);
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, () => admin.createKey('billing')),
+    );
 
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
     const active = (await admin.list())[0]?.keys.filter((key) => key.status === 'active');
     expect(active).toHaveLength(2);
   });

@@ -1,4 +1,4 @@
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type {
   ApiClient,
   ApiClientRepository,
@@ -17,12 +17,14 @@ const BEARER = /^Bearer\s+(\S+)$/i;
 const unauthorized = () => new ApiError(401, 'UNAUTHORIZED', 'Missing or invalid API key');
 
 export function authenticate(apiClients: ApiClientRepository) {
-  return async (request: FastifyRequest): Promise<void> => {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const key = BEARER.exec(request.headers.authorization ?? '')?.[1];
     const client = key ? await apiClients.authenticate(key) : null;
     if (!client) throw unauthorized();
     request.client = client;
+    // reply.log es otro logger (el de "request completed"): ambos deben llevar el cliente
     request.log = request.log.child({ clientId: client.id });
+    reply.log = request.log;
   };
 }
 

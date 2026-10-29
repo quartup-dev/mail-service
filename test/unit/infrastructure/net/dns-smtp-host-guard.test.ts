@@ -36,9 +36,13 @@ describe('DnsSmtpHostGuard', () => {
     '169.254.169.254',
     '172.16.0.1',
     '172.31.255.255',
+    '192.0.0.8',
     '192.0.2.10',
+    '192.88.99.1',
     '192.168.1.1',
     '198.18.0.1',
+    '198.51.100.7',
+    '203.0.113.9',
     '224.0.0.1',
     '240.0.0.1',
     '255.255.255.255',
@@ -51,14 +55,21 @@ describe('DnsSmtpHostGuard', () => {
     );
   });
 
-  it.each(['::', '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'ff02::1', '2001:db8::1'])(
-    'rejects the non-public IPv6 %s',
-    async (ip) => {
-      await expect(guardWith().resolveAndValidate(ip, 587)).rejects.toBeInstanceOf(
-        SmtpHostNotAllowedError,
-      );
-    },
-  );
+  it.each([
+    '::',
+    '::1',
+    'fc00::1',
+    'fd12:3456::1',
+    'fe80::1',
+    'ff02::1',
+    '2001:db8::1',
+    '2001:0:4136:e378:8000:63bf:3fff:fdd2', // Teredo
+    '2002:a00:1::1', // 6to4 que encapsula 10.0.0.1
+  ])('rejects the non-public IPv6 %s', async (ip) => {
+    await expect(guardWith().resolveAndValidate(ip, 587)).rejects.toBeInstanceOf(
+      SmtpHostNotAllowedError,
+    );
+  });
 
   it.each(['::ffff:127.0.0.1', '::ffff:10.0.0.1', '::ffff:a9fe:a9fe'])(
     'rejects the IPv4-mapped IPv6 %s that points to a forbidden range',
