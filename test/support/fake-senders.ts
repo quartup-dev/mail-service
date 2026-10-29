@@ -2,14 +2,31 @@ import type { EmailApiProvider } from '../../src/application/ports/email-api-pro
 import type { SendResult } from '../../src/application/ports/send-result';
 import type { SmtpSender } from '../../src/application/ports/smtp-sender';
 import type { ApiProviderName, EmailMessage, SmtpServerConfig } from '../../src/domain/email';
-import type { FakeClock } from './fake-clock';
+import type { Clock } from '../../src/application/ports/clock';
 
 // Comportamiento común: registra los envíos y puede fallar en los próximos intentos
 abstract class FakeSender {
   private readonly failures: Error[] = [];
+  private gate: Promise<void> | null = null;
   protected sentCount = 0;
+  startedCount = 0;
 
-  constructor(protected readonly clock: FakeClock) {}
+  constructor(protected readonly clock: Clock) {}
+
+  // Retiene los envíos hasta llamar a la función devuelta (envíos lentos)
+  hold(): () => void {
+    let release = () => {};
+    this.gate = new Promise((resolve) => (release = resolve));
+    return () => {
+      this.gate = null;
+      release();
+    };
+  }
+
+  protected async start(): Promise<void> {
+    this.startedCount++;
+    if (this.gate) await this.gate;
+  }
 
   failNextWith(...errors: Error[]): void {
     this.failures.push(...errors);
@@ -24,13 +41,14 @@ export class FakeApiProvider extends FakeSender implements EmailApiProvider {
   readonly sent: EmailMessage[] = [];
 
   constructor(
-    clock: FakeClock,
+    clock: Clock,
     readonly name: ApiProviderName = 'mailgun',
   ) {
     super(clock);
   }
 
   async send(message: EmailMessage): Promise<SendResult> {
+    await this.start();
     const failure = this.nextFailure();
     if (failure) throw failure;
     this.sent.push(structuredClone(message));
@@ -57,6 +75,7 @@ export class FakeSmtpSender extends FakeSender implements SmtpSender {
     server: SmtpServerConfig,
     target: { ip: string },
   ): Promise<SendResult> {
+    await this.start();
     const failure = this.nextFailure();
     if (failure) throw failure;
     this.sent.push(structuredClone({ message, server, target }));
