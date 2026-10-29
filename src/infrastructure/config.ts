@@ -26,7 +26,16 @@ const commaList = z
       .filter((item) => item.length > 0),
   );
 
-const key32 = z.string().transform((value) => Buffer.from(value, 'base64'));
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+// Clave de 32 bytes en base64. El mensaje de error nunca incluye el valor
+const key32 = z
+  .string()
+  .refine(
+    (value) => BASE64.test(value) && Buffer.from(value, 'base64').length === 32,
+    'must be 32 bytes encoded in base64',
+  )
+  .transform((value) => Buffer.from(value, 'base64'));
 
 // Grupos de variables; cada proceso combina los que usa
 const commonFields = {

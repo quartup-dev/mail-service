@@ -72,6 +72,21 @@ describe('loadConfig', () => {
     );
   });
 
+  describe.each(['SMTP_CREDENTIALS_ENCRYPTION_KEY', 'API_KEY_PEPPER'])('%s', (variable) => {
+    it.each([
+      ['16 bytes', Buffer.alloc(16, 7).toString('base64')],
+      ['33 bytes', Buffer.alloc(33, 7).toString('base64')],
+      ['not base64', 'this is not base64 but has enough characters!!'],
+    ])('rejects a value of %s without revealing it', (_label, value) => {
+      const env = { ...apiEnv(), [variable]: value };
+
+      const error = configErrorOf('api', env);
+
+      expect(error.message).toContain(variable);
+      expect(error.message).not.toContain(value);
+    });
+  });
+
   it('loads a minimal api environment and applies defaults', () => {
     const config = loadConfig('api', apiEnv());
 
