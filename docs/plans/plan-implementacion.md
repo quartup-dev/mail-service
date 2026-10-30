@@ -21,6 +21,7 @@
 | 4 | Proveedores reales | Completada |
 | 5 | Webhooks y supresión | Completada |
 | 6 | Producción | Completada |
+| 7 | Servicios consumidores en máquinas remotas | En curso |
 
 ---
 
@@ -1138,6 +1139,41 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] `bun audit` sin vulnerabilidades altas.
 - [x] README completo según la lista de esta fase.
 - [x] `bun run lint`, `typecheck`, tests unitarios y de integración y `openapi:check` en verde.
+
+---
+
+## Fase 7: servicios consumidores en máquinas remotas
+
+**Contexto (2026-10-30):** los 3-4 servicios que llaman a la API son nuestros, pero pueden estar en máquinas remotas. Esto invalida una premisa de la fase 6 ("la API solo en la red interna, salvo los webhooks"): las peticiones a `/v1/emails`, que llevan las API keys y las credenciales SMTP, cruzan redes que no controlamos.
+
+**Decisión:** exponer `/v1/emails` por HTTPS a través del proxy inverso, que solo deja pasar las IPs de nuestras máquinas (opción 1 de las tres valoradas; descartadas mTLS y VPN por coste de mantenimiento, con IPs fijas disponibles).
+
+**Cambios:**
+- **Proxy** (configuración, README): un único nombre, solo en el 443 y sin escuchar en el 80. Una redirección de HTTP a HTTPS llegaría tarde, porque las credenciales ya habrían viajado sin cifrar. `/v1/emails` solo para las IPs permitidas; los webhooks, abiertos; `/docs`, `/health` y `/ready`, cerrados. El proxy envía `X-Forwarded-For` y `X-Forwarded-Proto`.
+- **`TRUST_PROXY`** (API): lista de IPs o CIDR del proxy, que se pasa a `trustProxy` de Fastify para que `request.ip` y `request.protocol` reflejen al cliente real. Vacía = no se confía en ningún proxy. Con `NODE_ENV=production` es obligatoria, porque la API no sirve TLS por sí misma.
+- **HTTPS obligatorio en `/v1/emails` en producción**: antes de autenticar, una petición que no llegó por HTTPS se rechaza con **403 `HTTPS_REQUIRED`**. No protege esa petición (ya viajó en claro), pero hace que un despliegue mal configurado falle en la primera petición en lugar de funcionar en silencio. Sin opción para desactivarlo; en desarrollo no se aplica.
+- **OpenAPI**: 403 `HTTPS_REQUIRED` en `POST /v1/emails` y `GET /v1/emails/{id}`.
+- **Descartado**: límite por IP para peticiones sin key válida. Con la lista de IPs en el proxy, nadie de fuera llega a `/v1/emails`.
+
+**Casos de prueba:**
+
+*Configuración*
+- [ ] `TRUST_PROXY` se lee como lista de IPs o CIDR; vacía o ausente = lista vacía.
+- [ ] Rechaza un valor que no es IP ni CIDR.
+- [ ] Con `NODE_ENV=production`, `TRUST_PROXY` es obligatoria.
+
+*HTTPS en `/v1/emails`*
+- [ ] En producción, `POST` y `GET` por HTTP responden 403 `HTTPS_REQUIRED` sin autenticar ni crear nada.
+- [ ] En producción, la petición con `X-Forwarded-Proto: https` desde un proxy de confianza se atiende.
+- [ ] `X-Forwarded-Proto: https` desde una IP que no es de confianza no cuenta como HTTPS.
+- [ ] Fuera de producción, HTTP se atiende como hasta ahora.
+- [ ] Los webhooks, `/health` y `/ready` no se ven afectados.
+- [ ] Con un proxy de confianza, los logs llevan la IP del cliente real.
+- [ ] Las respuestas 403 cumplen `openapi.yaml`.
+
+**Verificación:**
+- [ ] README: exposición con la lista de IPs, ejemplo de nginx actualizado y `TRUST_PROXY` en la configuración.
+- [ ] `bun run lint`, `typecheck`, tests unitarios y de integración y `openapi:check` en verde.
 
 ---
 
