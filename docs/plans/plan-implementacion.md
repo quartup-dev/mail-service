@@ -1012,10 +1012,10 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 **Casos de prueba:**
 
 *Reserva anti-repetición (`ReplayGuard`, contrato en memoria y Redis)*
-- [ ] La primera reserva de una clave se concede y la segunda no.
-- [ ] Liberar una clave permite reservarla de nuevo.
-- [ ] Claves distintas son independientes.
-- [ ] La reserva caduca tras su TTL (en memoria con `FakeClock`; en Redis, con TTL en la clave).
+- [x] La primera reserva de una clave se concede y la segunda no.
+- [x] Liberar una clave permite reservarla de nuevo.
+- [x] Claves distintas son independientes.
+- [x] La reserva caduca tras su TTL (en memoria con `FakeClock`; en Redis, con TTL en la clave).
 
 *Firma de Mailgun*
 - [ ] Acepta HMAC-SHA256 hex de `timestamp + token` con la clave de firma.
