@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { ReplayGuard } from './replay-guard';
 
-export type WebhookRejectionReason = 'invalid_signature' | 'stale_timestamp';
+export type WebhookRejectionReason =
+  'invalid_signature' | 'stale_timestamp' | 'untrusted_certificate_url' | 'unknown_topic';
 
 // La petición no viene del proveedor o está fuera de su ventana de tiempo: se responde 401
 export class WebhookRejectedError extends Error {

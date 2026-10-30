@@ -1032,15 +1032,15 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Otros eventos se ignoran.
 
 *Firma de SNS*
-- [ ] `SignatureVersion` 1 (SHA1withRSA) y 2 (SHA256withRSA) válidas.
-- [ ] Rechaza una versión desconocida.
-- [ ] Rechaza un mensaje alterado o una firma incorrecta.
-- [ ] Cadena a firmar de `Notification` con y sin `Subject`, y de `SubscriptionConfirmation` y `UnsubscribeConfirmation`.
-- [ ] Rechaza `SigningCertURL` con `http`, host ajeno, host con `amazonaws.com` como subcadena, otra región, puerto explícito o ruta sin `.pem`.
-- [ ] Rechaza un `TopicArn` no permitido sin descargar el certificado.
-- [ ] Rechaza un `Timestamp` de más de 1 h o de más de 5 min en el futuro.
-- [ ] Un `MessageId` repetido se informa como repetición.
-- [ ] Descarga el certificado una sola vez por URL; un fallo de descarga no se cachea.
+- [x] `SignatureVersion` 1 (SHA1withRSA) y 2 (SHA256withRSA) válidas.
+- [x] Rechaza una versión desconocida.
+- [x] Rechaza un mensaje alterado o una firma incorrecta.
+- [x] Cadena a firmar de `Notification` con y sin `Subject`, y de `SubscriptionConfirmation` y `UnsubscribeConfirmation`.
+- [x] Rechaza `SigningCertURL` con `http`, host ajeno, host con `amazonaws.com` como subcadena, otra región, puerto explícito o ruta sin `.pem`.
+- [x] Rechaza un `TopicArn` no permitido sin descargar el certificado.
+- [x] Rechaza un `Timestamp` de más de 1 h o de más de 5 min en el futuro.
+- [x] Un `MessageId` repetido se informa como repetición.
+- [x] Descarga el certificado una sola vez por URL; un fallo de descarga no se cachea.
 
 *Descarga de certificados y confirmación de suscripción (`fetch` simulado)*
 - [ ] Devuelve el PEM con respuesta 2xx y lanza con otra.
