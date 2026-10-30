@@ -27,6 +27,8 @@ export interface AppDependencies {
   rateLimitRedis?: Redis; // sin Redis, el rate limit usa memoria local (tests y exportación OpenAPI)
   readiness: ApiReadinessChecks;
   version: string; // info.version de la especificación OpenAPI
+  requireHttps: boolean; // producción: /v1/emails solo por HTTPS
+  trustProxy: string[]; // IPs o CIDR del proxy (TRUST_PROXY); vacío = ninguno
   // Cada webhook se registra solo si su proveedor es el de MAIL_API_PROVIDER
   webhooks: {
     handleProviderEvent: HandleProviderEvent;
@@ -44,6 +46,8 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     ...(deps.logger && { loggerInstance: deps.logger }),
     genReqId: generateRequestId,
     bodyLimit: deps.limits.maxBodyBytes,
+    // Solo el proxy de confianza puede fijar la IP del cliente y el protocolo (X-Forwarded-*)
+    trustProxy: deps.trustProxy.length > 0 ? deps.trustProxy : false,
   });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -56,6 +60,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     queueEmail: deps.queueEmail,
     getEmailStatus: deps.getEmailStatus,
     maxAttachmentsBytes: deps.limits.maxAttachmentsBytes,
+    requireHttps: deps.requireHttps,
     rateLimit: {
       defaultPerMinute: deps.limits.rateLimitDefaultPerMinute,
       ...(deps.rateLimitRedis && { redis: deps.rateLimitRedis }),

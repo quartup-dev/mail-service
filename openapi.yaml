@@ -624,6 +624,7 @@ components:
       enum:
         - VALIDATION_ERROR
         - UNAUTHORIZED
+        - HTTPS_REQUIRED
         - TRANSPORT_NOT_ALLOWED
         - FROM_DOMAIN_NOT_ALLOWED
         - NOT_FOUND
@@ -866,7 +867,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Transporte o dominio de from no permitidos (TRANSPORT_NOT_ALLOWED,
+          description: Petición sin HTTPS en producción (HTTPS_REQUIRED), o transporte o
+            dominio de from no permitidos (TRANSPORT_NOT_ALLOWED,
             FROM_DOMAIN_NOT_ALLOWED)
           headers:
             X-Request-Id:
@@ -985,6 +987,17 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: API key ausente o inválida (UNAUTHORIZED)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Petición sin HTTPS en producción (HTTPS_REQUIRED)
           headers:
             X-Request-Id:
               schema:

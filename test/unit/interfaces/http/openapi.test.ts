@@ -13,7 +13,7 @@ type Schema = OpenAPIV3_1.SchemaObject & { $ref?: string };
 
 const EXPECTED_RESPONSES: Record<string, Record<string, string[]>> = {
   '/v1/emails': { post: ['200', '202', '400', '401', '403', '409', '413', '422', '429', '500'] },
-  '/v1/emails/{id}': { get: ['200', '400', '401', '404', '429', '500'] },
+  '/v1/emails/{id}': { get: ['200', '400', '401', '403', '404', '429', '500'] },
   '/health': { get: ['200'] },
   '/ready': { get: ['200', '503'] },
   '/v1/webhooks/mailgun': { post: ['204', '400', '401', '413', '500'] },

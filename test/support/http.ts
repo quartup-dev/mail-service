@@ -30,6 +30,8 @@ export interface TestAppOptions {
   apiProviderName?: 'mailgun' | 'ses' | null;
   limits?: Partial<AppDependencies['limits']>;
   readiness?: Partial<AppDependencies['readiness']>;
+  requireHttps?: boolean;
+  trustProxy?: string[];
 }
 
 // App completa con adaptadores en memoria y fakes; los logs se capturan en `logs`
@@ -111,6 +113,8 @@ export function buildTestApp(options: TestAppOptions = {}) {
       ...options.readiness,
     },
     version: '0.0.0-test',
+    requireHttps: options.requireHttps ?? false,
+    trustProxy: options.trustProxy ?? [],
     // Como en producción, solo el webhook del proveedor configurado
     webhooks: {
       handleProviderEvent: new HandleProviderEvent({ emails, suppressions, clock }),

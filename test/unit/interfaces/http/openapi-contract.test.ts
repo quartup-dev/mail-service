@@ -146,4 +146,18 @@ describe('responses match openapi.yaml', () => {
     expectToMatchContract('/v1/webhooks/ses', 'post', invalid);
     expectToMatchContract('/v1/webhooks/ses', 'post', unauthorized);
   });
+
+  it('403 HTTPS_REQUIRED of POST /v1/emails and GET /v1/emails/{id}', async () => {
+    ({ app } = buildTestApp({ requireHttps: true }));
+    const created = await post(apiRequest());
+    const found = await app.inject({
+      method: 'GET',
+      url: '/v1/emails/0192f0c4-0000-7000-8000-999999999999',
+      headers: auth(CRM_KEY),
+    });
+
+    expect([created.statusCode, found.statusCode]).toEqual([403, 403]);
+    expectToMatchContract('/v1/emails', 'post', created);
+    expectToMatchContract('/v1/emails/{id}', 'get', found);
+  });
 });

@@ -252,6 +252,8 @@ export function createApiContainer(
       apiProvider: null,
     },
     version: packageJson.version,
+    requireHttps: config.nodeEnv === 'production',
+    trustProxy: config.trustProxy,
     webhooks: {
       handleProviderEvent: new HandleProviderEvent({
         emails,

@@ -1,5 +1,5 @@
 import rateLimit from '@fastify/rate-limit';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Redis } from 'ioredis';
 import type { GetEmailStatus } from '../../../application/get-email-status';
@@ -27,6 +27,7 @@ export interface EmailRoutesOptions {
   queueEmail: QueueEmail;
   getEmailStatus: GetEmailStatus;
   maxAttachmentsBytes: number;
+  requireHttps: boolean;
   rateLimit: { defaultPerMinute: number; redis?: Redis };
 }
 
@@ -34,6 +35,8 @@ export interface EmailRoutesOptions {
 export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope, options) => {
   const app = scope.withTypeProvider<ZodTypeProvider>();
   app.decorateRequest('client', null);
+  // Antes que la autenticación: con HTTP, la API key y las credenciales SMTP viajan en claro
+  if (options.requireHttps) app.addHook('onRequest', rejectPlainHttp);
   app.addHook('onRequest', authenticate(options.apiClients));
   // Va después de la autenticación (los hooks de la instancia corren antes que los de ruta que
   // añade el plugin): una petición sin key válida no consume el límite de nadie
@@ -72,7 +75,7 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
           401: ErrorResponseSchema.describe('API key ausente o inválida (UNAUTHORIZED)'),
           429: ErrorResponseSchema.describe('Límite de peticiones superado (RATE_LIMITED)'),
           403: ErrorResponseSchema.describe(
-            'Transporte o dominio de from no permitidos (TRANSPORT_NOT_ALLOWED, FROM_DOMAIN_NOT_ALLOWED)',
+            'Petición sin HTTPS en producción (HTTPS_REQUIRED), o transporte o dominio de from no permitidos (TRANSPORT_NOT_ALLOWED, FROM_DOMAIN_NOT_ALLOWED)',
           ),
           409: ErrorResponseSchema.describe(
             'Idempotency-Key ya usada con otro cuerpo (IDEMPOTENCY_CONFLICT)',
@@ -113,6 +116,7 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
             'Identificador con formato inválido (VALIDATION_ERROR)',
           ),
           401: ErrorResponseSchema.describe('API key ausente o inválida (UNAUTHORIZED)'),
+          403: ErrorResponseSchema.describe('Petición sin HTTPS en producción (HTTPS_REQUIRED)'),
           429: ErrorResponseSchema.describe('Límite de peticiones superado (RATE_LIMITED)'),
           404: ErrorResponseSchema.describe('Mensaje inexistente o de otro cliente (NOT_FOUND)'),
           500: ErrorResponseSchema.describe('Error interno (INTERNAL_ERROR)'),
@@ -129,6 +133,14 @@ export const emailRoutes: FastifyPluginAsync<EmailRoutesOptions> = async (scope,
     },
   );
 };
+
+// La petición ya viajó sin cifrar; rechazarla hace que un despliegue mal configurado falle enseguida
+async function rejectPlainHttp(request: FastifyRequest): Promise<void> {
+  if (request.protocol !== 'https') {
+    request.log.warn('Request over plain HTTP rejected');
+    throw new ApiError(403, 'HTTPS_REQUIRED', 'HTTPS is required');
+  }
+}
 
 // El límite se aplica al tamaño decodificado de todos los adjuntos juntos
 function ensureAttachmentsWithinLimit(

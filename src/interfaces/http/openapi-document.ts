@@ -45,6 +45,8 @@ export function buildOpenApiApp(version: string): FastifyInstance {
     getEmailStatus: new GetEmailStatus({ emails }),
     readiness: { postgres: async () => {}, redis: async () => {}, apiProvider: null },
     version,
+    requireHttps: false,
+    trustProxy: [],
     // La especificación documenta los webhooks de los dos proveedores
     webhooks: {
       handleProviderEvent: new HandleProviderEvent({

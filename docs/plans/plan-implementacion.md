@@ -1163,13 +1163,13 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Con `NODE_ENV=production`, `TRUST_PROXY` es obligatoria.
 
 *HTTPS en `/v1/emails`*
-- [ ] En producción, `POST` y `GET` por HTTP responden 403 `HTTPS_REQUIRED` sin autenticar ni crear nada.
-- [ ] En producción, la petición con `X-Forwarded-Proto: https` desde un proxy de confianza se atiende.
-- [ ] `X-Forwarded-Proto: https` desde una IP que no es de confianza no cuenta como HTTPS.
-- [ ] Fuera de producción, HTTP se atiende como hasta ahora.
-- [ ] Los webhooks, `/health` y `/ready` no se ven afectados.
-- [ ] Con un proxy de confianza, los logs llevan la IP del cliente real.
-- [ ] Las respuestas 403 cumplen `openapi.yaml`.
+- [x] En producción, `POST` y `GET` por HTTP responden 403 `HTTPS_REQUIRED` sin autenticar ni crear nada.
+- [x] En producción, la petición con `X-Forwarded-Proto: https` desde un proxy de confianza se atiende.
+- [x] `X-Forwarded-Proto: https` desde una IP que no es de confianza no cuenta como HTTPS.
+- [x] Fuera de producción, HTTP se atiende como hasta ahora.
+- [x] Los webhooks, `/health` y `/ready` no se ven afectados.
+- [x] Con un proxy de confianza, los logs llevan la IP del cliente real.
+- [x] Las respuestas 403 cumplen `openapi.yaml`.
 
 **Verificación:**
 - [ ] README: exposición con la lista de IPs, ejemplo de nginx actualizado y `TRUST_PROXY` en la configuración.
