@@ -1158,9 +1158,9 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 **Casos de prueba:**
 
 *Configuración*
-- [ ] `TRUST_PROXY` se lee como lista de IPs o CIDR; vacía o ausente = lista vacía.
-- [ ] Rechaza un valor que no es IP ni CIDR.
-- [ ] Con `NODE_ENV=production`, `TRUST_PROXY` es obligatoria.
+- [x] `TRUST_PROXY` se lee como lista de IPs o CIDR; vacía o ausente = lista vacía.
+- [x] Rechaza un valor que no es IP ni CIDR.
+- [x] Con `NODE_ENV=production`, `TRUST_PROXY` es obligatoria.
 
 *HTTPS en `/v1/emails`*
 - [ ] En producción, `POST` y `GET` por HTTP responden 403 `HTTPS_REQUIRED` sin autenticar ni crear nada.

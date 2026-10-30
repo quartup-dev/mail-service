@@ -190,6 +190,39 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('TRUST_PROXY', () => {
+    it('is parsed as a trimmed list of IPs and CIDRs', () => {
+      const env = { ...apiEnv(), TRUST_PROXY: ' 10.0.0.5 , 172.18.0.0/16,, ::1 ' };
+
+      expect(loadConfig('api', env).trustProxy).toEqual(['10.0.0.5', '172.18.0.0/16', '::1']);
+    });
+
+    it('is an empty list when it is not defined', () => {
+      expect(loadConfig('api', apiEnv()).trustProxy).toEqual([]);
+    });
+
+    it.each(['proxy.example.com', '10.0.0.300', '10.0.0.0/33', '::1/129', '10.0.0.0/'])(
+      'rejects %s, which is neither an IP nor a CIDR',
+      (value) => {
+        const env = { ...apiEnv(), TRUST_PROXY: `10.0.0.5,${value}` };
+
+        expect(configErrorOf('api', env).message).toContain('TRUST_PROXY');
+      },
+    );
+
+    it('is required in production, where TLS ends at the proxy', () => {
+      const env = { ...apiEnv(), NODE_ENV: 'production' };
+
+      expect(configErrorOf('api', env).message).toContain('TRUST_PROXY: is required in production');
+    });
+
+    it('is accepted in production when defined', () => {
+      const env = { ...apiEnv(), NODE_ENV: 'production', TRUST_PROXY: '10.0.0.5' };
+
+      expect(loadConfig('api', env).trustProxy).toEqual(['10.0.0.5']);
+    });
+  });
+
   describe('SMTP_ALLOWED_PRIVATE_HOSTS', () => {
     it.each(['api', 'worker'] as const)('is parsed as a trimmed list in %s', (kind) => {
       const env = {
@@ -214,6 +247,7 @@ describe('loadConfig', () => {
       const env = {
         ...validEnvFor[kind](),
         NODE_ENV: 'production',
+        TRUST_PROXY: '10.0.0.5', // la API la exige en producción; el worker la ignora
         SMTP_ALLOWED_PRIVATE_HOSTS: '',
       };
 

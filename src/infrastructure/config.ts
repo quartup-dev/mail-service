@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { z } from 'zod';
 
 export type ProcessKind = 'api' | 'worker' | 'keys-cli' | 'suppressions-cli' | 'migrate';
@@ -26,6 +27,19 @@ const commaList = z
       .map((item) => item.trim())
       .filter((item) => item.length > 0),
   );
+
+// IP o red en notación CIDR (10.0.0.0/8, fd00::/8), como las acepta trustProxy de Fastify
+function isIpOrCidr(value: string): boolean {
+  const [address = '', prefix, ...rest] = value.split('/');
+  const version = isIP(address);
+  if (version === 0 || rest.length > 0) return false;
+  if (prefix === undefined) return true;
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) <= (version === 4 ? 32 : 128);
+}
+
+const ipOrCidrList = commaList.pipe(
+  z.array(z.string().refine(isIpOrCidr, 'must be a list of IPs or CIDRs')),
+);
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -74,6 +88,7 @@ const apiOnlyFields = {
   RATE_LIMIT_DEFAULT_PER_MINUTE: positiveInt(120),
   MAX_BODY_BYTES: positiveInt(15_728_640),
   MAX_ATTACHMENTS_BYTES: positiveInt(10_485_760),
+  TRUST_PROXY: ipOrCidrList,
 };
 
 const workerOnlyFields = {
@@ -191,6 +206,13 @@ const checkServerRules = (env: CommonEnv & ServerEnv, ctx: z.RefinementCtx) => {
   }
 };
 
+// La API no sirve TLS: en producción va siempre detrás de un proxy que termina el TLS
+const checkApiRules = (env: CommonEnv & { TRUST_PROXY: string[] }, ctx: z.RefinementCtx) => {
+  if (env.NODE_ENV === 'production' && env.TRUST_PROXY.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['TRUST_PROXY'], message: 'is required in production' });
+  }
+};
+
 const checkWorkerRules = (env: WorkerEnv, ctx: z.RefinementCtx) => {
   if (env.PAYLOAD_RETENTION_DAYS > env.EVENTS_RETENTION_DAYS) {
     ctx.addIssue({
@@ -238,6 +260,7 @@ const schemas = {
       z.object({ ...commonFields, ...serverFields, ...apiOnlyFields }).and(apiProviderFields),
     )
     .superRefine(checkServerRules)
+    .superRefine(checkApiRules)
     .transform((env) => ({
       ...toCommon(env),
       ...toServer(env),
@@ -248,6 +271,7 @@ const schemas = {
       rateLimitDefaultPerMinute: env.RATE_LIMIT_DEFAULT_PER_MINUTE,
       maxBodyBytes: env.MAX_BODY_BYTES,
       maxAttachmentsBytes: env.MAX_ATTACHMENTS_BYTES,
+      trustProxy: env.TRUST_PROXY,
       jobs: { maxAttempts: env.WORKER_MAX_ATTEMPTS, backoffBaseMs: env.WORKER_BACKOFF_BASE_MS },
     })),
   worker: z
