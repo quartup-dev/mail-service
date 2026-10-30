@@ -19,7 +19,7 @@
 | 2 | Persistencia, colas y worker | Completada |
 | 3 | API HTTP y autenticación | Completada |
 | 4 | Proveedores reales | Completada |
-| 5 | Webhooks y supresión | En curso |
+| 5 | Webhooks y supresión | Completada |
 | 6 | Producción | Pendiente |
 
 ---
@@ -990,13 +990,13 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - CLI `bun run suppressions <comando>`: `list [--reason bounce|complaint|unsubscribe|manual]`, `add --email x@dominio.com` (motivo `manual`), `remove --email x@dominio.com`. No hay gestión por HTTP.
 
 **Aceptación:**
-- [ ] Payloads firmados de ejemplo: válidos, firma incorrecta, timestamp caducado y repetidos.
-- [ ] SNS: `SignatureVersion` 1 y 2, versión desconocida, `SigningCertURL` con `http`, con un host ajeno o con un host que solo contiene `amazonaws.com` como subcadena (p. ej. `sns.eu-west-1.amazonaws.com.evil.example`).
+- [x] Payloads firmados de ejemplo: válidos, firma incorrecta, timestamp caducado y repetidos.
+- [x] SNS: `SignatureVersion` 1 y 2, versión desconocida, `SigningCertURL` con `http`, con un host ajeno o con un host que solo contiene `amazonaws.com` como subcadena (p. ej. `sns.eu-west-1.amazonaws.com.evil.example`).
 - [x] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
-- [ ] En un mensaje con dos destinatarios, uno `delivered` y otro `bounced`, cada uno queda con su estado.
-- [ ] Un rebote permanente añade el destinatario a supresión y bloquea envíos posteriores por `api`, pero no por `smtp`.
-- [ ] `suppressions remove` permite volver a enviar.
-- [ ] `openapi.yaml` regenerado incluye los dos webhooks con sus esquemas de petición y respuesta, y `bun run openapi:check` pasa.
+- [x] En un mensaje con dos destinatarios, uno `delivered` y otro `bounced`, cada uno queda con su estado.
+- [x] Un rebote permanente añade el destinatario a supresión y bloquea envíos posteriores por `api`, pero no por `smtp`.
+- [x] `suppressions remove` permite volver a enviar.
+- [x] `openapi.yaml` regenerado incluye los dos webhooks con sus esquemas de petición y respuesta, y `bun run openapi:check` pasa.
 
 **Diseño acordado al empezar la fase (2026-10-30):**
 - Respuestas de los webhooks: **204** procesado o ignorado; **400** cuerpo inválido; **401** `UNAUTHORIZED` (firma inválida, timestamp fuera de ventana, topic no permitido); **413**; **500**.
@@ -1077,7 +1077,7 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Sin `MAIL_API_PROVIDER=ses` la ruta no existe (404).
 
 *Flujos de aceptación*
-- [ ] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
+- [x] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
 - [x] Mensaje con dos destinatarios: uno `delivered` y otro `bounced`, cada uno con su estado.
 - [x] Un rebote permanente suprime el destinatario: el siguiente envío por `api` lo omite y por `smtp` lo envía.
 - [x] `suppressions remove` permite volver a enviar por `api`.

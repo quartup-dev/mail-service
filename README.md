@@ -34,6 +34,14 @@ bun run keys key:revoke --client billing --key-id k_2026_10_a1b2c3
 bun run keys list
 ```
 
+Lista de supresión global (solo afecta al transporte `api`; los rebotes permanentes, quejas y bajas llegan solos por los webhooks):
+
+```bash
+bun run suppressions list [--reason bounce|complaint|unsubscribe|manual]
+bun run suppressions add --email cliente@dominio.com      # motivo manual
+bun run suppressions remove --email cliente@dominio.com   # vuelve a permitir envíos por api
+```
+
 La API se documenta en `http://localhost:3000/docs`. El contrato para los servicios consumidores es `openapi.yaml`, generado desde las rutas:
 
 ```bash
@@ -95,7 +103,7 @@ MAIL_API_PROVIDER=mailgun
 MAILGUN_API_KEY=...            # clave de envío del dominio
 MAILGUN_DOMAIN=mg.example.com
 MAILGUN_REGION=eu              # o us, según dónde esté el dominio
-MAILGUN_WEBHOOK_SIGNING_KEY=...   # la API la exige; los webhooks llegan en la fase 5
+MAILGUN_WEBHOOK_SIGNING_KEY=...   # la exige la API para verificar los webhooks
 ```
 
 **SES.** Las credenciales salen de la cadena estándar del SDK de AWS (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, rol de la instancia...). En `.env`:
@@ -104,7 +112,7 @@ MAILGUN_WEBHOOK_SIGNING_KEY=...   # la API la exige; los webhooks llegan en la f
 MAIL_API_PROVIDER=ses
 AWS_REGION=eu-west-1
 SES_CONFIGURATION_SET=         # opcional; necesario para recibir eventos por SNS
-SES_SNS_TOPIC_ARNS=arn:aws:sns:eu-west-1:123456789012:mail-events   # la API lo exige
+SES_SNS_TOPIC_ARNS=arn:aws:sns:eu-west-1:123456789012:mail-events   # topics aceptados en el webhook
 ```
 
 Después, reinicia API y worker y envía con `"transport": { "type": "api" }` (el cliente necesita el transporte `api`). Qué comprobar:
@@ -112,6 +120,15 @@ Después, reinicia API y worker y envía con `"transport": { "type": "api" }` (e
 - `GET /v1/emails/<id>` pasa a `sent` con `provider` y `providerMessageId`, y el correo llega con sus adjuntos, cabeceras y la cabecera `X-Mail-Service-Id`.
 - Con credenciales erróneas, el mensaje queda en `failed` sin reintentos (`MAILGUN_HTTP_401` o `SES_HTTP_403`).
 - En los intentos de `GET` se ve el código de cada error: los transitorios (`..._HTTP_429`, `..._NETWORK_ERROR`, `SES_TooManyRequestsException`...) se reintentan con _backoff_.
+
+### Webhooks de entrega
+
+Los webhooks actualizan el estado de cada destinatario (`delivered`, `bounced`, `complained`, `unsubscribed`) y alimentan la lista de supresión. Son las únicas rutas que se exponen a internet; se autentican por la firma del proveedor, no por API key. Solo existe la ruta del proveedor de `MAIL_API_PROVIDER`.
+
+- **Mailgun** (`POST /v1/webhooks/mailgun`): en el panel del dominio, crea webhooks de `delivered`, `permanent_fail`, `temporary_fail`, `complained` y `unsubscribed` apuntando a `https://<host>/v1/webhooks/mailgun`. La clave de firma (_HTTP webhook signing key_) va en `MAILGUN_WEBHOOK_SIGNING_KEY`.
+- **SES** (`POST /v1/webhooks/ses`): en el _configuration set_ de `SES_CONFIGURATION_SET`, crea un destino de eventos de SNS con `Delivery`, `Bounce` y `Complaint`, en un topic de la región de `AWS_REGION`. Añade el ARN del topic a `SES_SNS_TOPIC_ARNS` y suscribe `https://<host>/v1/webhooks/ses` por HTTPS: la API confirma la suscripción sola.
+
+Para probarlos en local hace falta una URL pública que llegue a la API (por ejemplo, un túnel). Al enviar un correo a una dirección de prueba que rebota (`bounce@simulator.amazonses.com` en SES), el destinatario pasa a `bounced`, aparece en `bun run suppressions list` y el siguiente envío por `api` a esa dirección queda `suppressed`.
 
 ## Decisiones
 
@@ -193,3 +210,17 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 - **Sin `verify()` del proveedor en `/ready` de la API**: la API solo tiene las credenciales de los webhooks, no las de envío.
 - **`@types/nodemailer` retirado**: Nodemailer 10 incluye sus propios tipos.
 - **Los tests de Mailpit** usan `localhost` (incluido en el certificado de desarrollo) y conectan a `127.0.0.1`. El test sin la CA local lanza `test/support/send-to-mailpit.ts` en un proceso hijo sin `NODE_EXTRA_CA_CERTS`.
+
+### Fase 5: webhooks y supresión
+
+- **Respuestas de los webhooks**: 204 si el evento se procesa, se ignora o se repite; 400 si el cuerpo no es válido; 401 `UNAUTHORIZED`, con el mismo mensaje en todos los casos, si la firma no es válida, el certificado o el topic no están permitidos o el timestamp está fuera de plazo (el motivo concreto va al log); 413 por encima de 1 MiB; 500 si falla el procesado.
+- **Repeticiones con 204**: un token de Mailgun o un `MessageId` de SNS ya recibido no se procesa, pero se responde 204 para que el proveedor no siga reintentando un evento que ya procesamos.
+- **Reserva tras la firma y liberación si falla**: el identificador se reserva en Redis (`SET NX PX`) solo después de verificar la firma y se libera si el procesado falla, para que el reintento del proveedor sí se procese. Todas las instancias de la API comparten la reserva.
+- **Ventanas de tiempo**: Mailgun, ±5 min. SNS, hasta 1 h de antigüedad (SNS reintenta con el `Timestamp` original) y 5 min en el futuro. Cada reserva dura lo que su ventana completa.
+- **`TopicArn` comprobado en todos los mensajes de SNS**, antes de descargar el certificado: cualquiera puede crear un topic en su cuenta de AWS, suscribir nuestra URL y enviarnos mensajes con firma válida de SNS.
+- **URLs de SNS**: `SigningCertURL` y `SubscribeURL` deben ser `https://sns.<AWS_REGION>.amazonaws.com/...`, sin puerto ni credenciales (validado con `URL`, no por subcadena), y el certificado debe terminar en `.pem`. Las descargas no siguen redirecciones y tienen un timeout de 10 s. Los certificados se cachean por URL en memoria; un fallo de descarga no se cachea y responde 500.
+- **Eventos de SES** en el formato de publicación de eventos del _configuration set_ (`eventType`). `Bounce` `Transient` o `Undetermined` se registra como fallo temporal, sin supresión. Se ignoran los demás tipos de SES (`Send`, `Open`, `DeliveryDelay`...) y de Mailgun (`accepted`, `opened`, `clicked`...).
+- **Límite de cuerpo de 1 MiB en los webhooks**, propio de esas rutas y muy por debajo del de `POST /v1/emails`, porque están expuestas a internet (SNS limita los mensajes a 256 KB).
+- **Solo la ruta del proveedor configurado**: si se cambia `MAIL_API_PROVIDER`, los eventos que aún lleguen del proveedor anterior reciben 404. La especificación OpenAPI documenta las dos.
+- **CLI de supresiones** con salida separada por tabuladores (`email`, motivo, origen, fecha) y los mensajes más antiguos primero. `add` con una dirección ya suprimida conserva la entrada original. Valida el email y el motivo antes de tocar la base de datos (código 2). El parseo de argumentos se comparte con el CLI de keys en `src/interfaces/cli/cli-support.ts`.
+- **Certificado de SNS para tests**: `test/fixtures/sns/` contiene una clave RSA y un certificado autofirmado generados solo para los tests, que firman los mensajes como lo haría SNS.
