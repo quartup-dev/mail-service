@@ -1,74 +1,132 @@
 # mail-service
 
-Microservicio de envío de correo por SMTP o por API (Mailgun, SES) para servicios internos.
+Microservicio de envío de correo para los servicios internos. Una API HTTP recibe las peticiones de envío, las guarda y las encola; un worker las envía por **SMTP** (el servidor llega en cada petición) o por el **proveedor de API** configurado (Mailgun o SES). El servicio registra el estado de envío de cada mensaje y el estado de entrega de cada destinatario a partir de los webhooks de los proveedores.
 
-> En construcción. El plan de implementación está en [docs/plans/plan-implementacion.md](docs/plans/plan-implementacion.md) y las reglas del proyecto en [.claude/CLAUDE.md](.claude/CLAUDE.md). Este README se completará en la fase 6.
+- Contrato de la API para los consumidores: [openapi.yaml](openapi.yaml) (también en `/docs` de la API).
+- Plan de implementación: [docs/plans/plan-implementacion.md](docs/plans/plan-implementacion.md). Reglas del proyecto: [.claude/CLAUDE.md](.claude/CLAUDE.md).
+
+## Arquitectura
+
+```
+servicio interno ──POST /v1/emails──▶ API ──▶ PostgreSQL (mensaje, destinatarios)
+                                       │
+                                       └──▶ Redis/BullMQ: emails-api | emails-smtp
+                                                         │
+                                               worker ◀──┘──▶ servidor SMTP del cliente
+                                                         └──▶ Mailgun o SES
+Mailgun / SNS (SES) ──POST /v1/webhooks/*──▶ API ──▶ estado por destinatario y supresión
+```
+
+- **Dos procesos con la misma imagen**: la API (`node dist/server.js`) y el worker (`node dist/worker.js`). Se escalan por separado.
+- **Colas**: `emails-api` y `emails-smtp`, para que un servidor SMTP lento no frene los envíos por API, y `maintenance`, con el barrido de pendientes (cada minuto) y la retención (cada hora).
+- **Estados**: el mensaje pasa por `queued` → `sending` → `sent` | `failed` | `suppressed`. Cada destinatario avanza por `pending` → `accepted` → `delivered` | `bounced` | `complained` | `unsubscribed` (o queda `suppressed` o `rejected`), y nunca retrocede.
+- **Garantía "al menos una vez"**: si el worker cae después de que el servidor acepte el correo y antes de guardar `sent`, el mensaje se reintenta y puede llegar duplicado.
+- **Supresión global solo para `transport: "api"`**: los rebotes permanentes, las quejas y las bajas que llegan por webhook, más las altas manuales por CLI, bloquean los envíos por API a esa dirección. Con SMTP el servidor es del cliente y no se aplica.
+- **Capas del código**: `domain/` y `application/` (reglas y casos de uso, sin librerías de transporte), `infrastructure/` (PostgreSQL, BullMQ, proveedores, cifrado, configuración) e `interfaces/` (Fastify, consumidores de BullMQ y CLIs).
 
 ## Requisitos
 
 - Node.js 24 (`nvm use` lee `.nvmrc`).
-- Bun, solo como gestor de paquetes y para lanzar scripts.
+- Bun, solo como gestor de paquetes y para lanzar scripts (`bun run <script>`; nunca `bun test`).
 - Docker y Docker Compose.
 
-## Puesta en marcha en local
+## Configuración
+
+Las variables están en [.env.example](.env.example) con sus valores por defecto, y el detalle en el anexo A del plan. Cada proceso valida al arrancar solo las que usa y se niega a arrancar si falta alguna o no es válida:
+
+| Variable                                                                 | API          | Worker       | CLIs            |
+| ------------------------------------------------------------------------ | ------------ | ------------ | --------------- |
+| `DATABASE_URL`                                                           | ✓            | ✓            | ✓               |
+| `REDIS_URL`                                                              | ✓            | ✓            | —               |
+| `SMTP_CREDENTIALS_ENCRYPTION_KEY` (32 bytes en base64)                   | ✓ (cifra)    | ✓ (descifra) | —               |
+| `API_KEY_PEPPER` (32 bytes en base64)                                    | ✓            | —            | ✓ (solo `keys`) |
+| `MAIL_API_PROVIDER` y las de su proveedor                                | ✓ (webhooks) | ✓ (envío)    | —               |
+| `WORKER_MAX_ATTEMPTS`, `WORKER_BACKOFF_BASE_MS` (mismo valor en los dos) | ✓            | ✓            | —               |
+
+Genera las claves con `openssl rand -base64 32`. Reglas que se comprueban al arrancar:
+
+- `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS`, si se define, es distinta de la activa.
+- `PAYLOAD_RETENTION_DAYS` ≤ `EVENTS_RETENTION_DAYS` ≤ `MESSAGE_RETENTION_DAYS`.
+- Con `NODE_ENV=production`, `SMTP_ALLOWED_PRIVATE_HOSTS` está vacía.
+
+## Ejecución local
+
+**Con Bun y Node** (recarga en caliente), con solo la infraestructura en Docker:
 
 ```bash
 bun install
-bun run dev:certs           # CA local y certificado de Mailpit (solo la primera vez)
-docker compose up -d --wait # PostgreSQL, Redis y Mailpit
-cp .env.example .env        # y rellena API_KEY_PEPPER y SMTP_CREDENTIALS_ENCRYPTION_KEY
-                            # con: openssl rand -base64 32
-bun run db:migrate          # aplica las migraciones de drizzle/
-bun run dev                 # API en http://localhost:3000
-bun run dev:worker          # worker; health en http://localhost:3001
-curl http://localhost:3000/health
-curl http://localhost:3001/ready
+bun run dev:certs                                  # CA local y certificado de Mailpit (la primera vez)
+docker compose up -d --wait postgres redis mailpit
+cp .env.example .env                               # y rellena API_KEY_PEPPER y SMTP_CREDENTIALS_ENCRYPTION_KEY
+bun run db:migrate
+bun run dev                                        # API en http://localhost:3000
+NODE_EXTRA_CA_CERTS=./docker/dev-certs/ca.pem bun run dev:worker   # health en http://localhost:3001
 ```
 
-Clientes y API keys (la key solo se muestra al crearla):
+**Todo en Docker** (la misma imagen que en producción):
 
 ```bash
-bun run keys client:create --id billing --name "Facturación" --transports api --from-domains example.com
-bun run keys key:create --client billing [--expires-at 2027-10-29]
-bun run keys key:revoke --client billing --key-id k_2026_10_a1b2c3
-bun run keys list
+bun run dev:certs
+cp .env.example .env                               # con las dos claves rellenas
+docker compose up -d --build --wait                # migrate, api, worker, postgres, redis y mailpit
+curl http://localhost:3000/ready
 ```
 
-Lista de supresión global (solo afecta al transporte `api`; los rebotes permanentes, quejas y bajas llegan solos por los webhooks):
-
-```bash
-bun run suppressions list [--reason bounce|complaint|unsubscribe|manual]
-bun run suppressions add --email cliente@dominio.com      # motivo manual
-bun run suppressions remove --email cliente@dominio.com   # vuelve a permitir envíos por api
-```
-
-La API se documenta en `http://localhost:3000/docs`. El contrato para los servicios consumidores es `openapi.yaml`, generado desde las rutas:
-
-```bash
-bun run openapi:export      # regenera openapi.yaml
-bun run openapi:check       # falla si openapi.yaml no está al día o no es válido
-```
-
-Comprobaciones:
-
-```bash
-bun run lint
-bun run typecheck
-bun run test                # unitarios; nunca "bun test", que lanza el runner de Bun
-bun run test:coverage       # unitarios con cobertura (mínimo 80 % en domain/ y application/)
-bun run test:integration    # requiere docker compose up
-```
+El Compose es de desarrollo. Toma las variables de `.env` y sobrescribe las que dependen de la red de Docker: `DATABASE_URL`, `REDIS_URL` y `SMTP_ALLOWED_PRIVATE_HOSTS=mailpit`. El servicio `migrate` aplica las migraciones y termina, y `api` y `worker` arrancan después. El worker monta la CA local y define `NODE_EXTRA_CA_CERTS` para confiar en Mailpit, que desde los contenedores es el host `mailpit`.
 
 Servicios de desarrollo:
 
 | Servicio                            | Puerto en el host |
 | ----------------------------------- | ----------------- |
 | API (documentación en `/docs`)      | 3000              |
+| Health del worker (solo con Bun)    | 3001              |
 | PostgreSQL                          | 55432             |
 | Redis                               | 56379             |
 | Mailpit SMTP (STARTTLS obligatorio) | 587               |
 | Mailpit web                         | 8025              |
-| Health del worker                   | 3001              |
+
+Comprobaciones:
+
+```bash
+bun run lint
+bun run typecheck
+bun run test                # unitarios
+bun run test:coverage       # con cobertura (mínimo 80 % en domain/ y application/)
+bun run test:integration    # requiere postgres, redis y mailpit en marcha
+bun run openapi:export      # regenera openapi.yaml tras cambiar una ruta o un esquema
+bun run openapi:check       # falla si openapi.yaml no está al día o no es válido
+bun audit --audit-level=high
+```
+
+## CLIs
+
+Los CLIs trabajan directamente contra PostgreSQL. En local se lanzan con `bun run keys ...` y `bun run suppressions ...`; en Docker, con el servicio `tools`, que no arranca con `docker compose up`:
+
+```bash
+docker compose run --rm tools node dist/scripts/keys.js <comando>
+docker compose run --rm tools node dist/scripts/suppressions.js <comando>
+```
+
+En producción se ejecutan con la misma imagen y solo `DATABASE_URL` (más `API_KEY_PEPPER` para `keys`).
+
+**Clientes y API keys.** La key solo se muestra al crearla; cada cliente admite como máximo dos keys activas, para rotarlas sin cortes. Las altas y revocaciones tienen efecto inmediato en todas las instancias de la API, sin reiniciar.
+
+```bash
+keys client:create --id billing --name "Facturación" [--transports smtp,api] [--from-domains example.com,*.example.org] [--rate-limit 120]
+keys client:update --id billing [--name ...] [--transports ...] [--from-domains ...] [--rate-limit ...]
+keys client:disable --id billing        # y client:enable
+keys key:create --client billing [--expires-at 2027-10-29]
+keys key:revoke --client billing --key-id k_2026_10_a1b2c3
+keys list
+```
+
+**Lista de supresión** (global; solo afecta a `transport: "api"`):
+
+```bash
+suppressions list [--reason bounce|complaint|unsubscribe|manual]
+suppressions add --email cliente@dominio.com      # motivo manual
+suppressions remove --email cliente@dominio.com   # vuelve a permitir envíos por api
+```
 
 ## Probar los envíos
 
@@ -90,7 +148,7 @@ curl -X POST http://localhost:3000/v1/emails \
   }'
 ```
 
-El correo aparece en http://localhost:8025 y `GET /v1/emails/<id>` pasa a `sent`. El cliente necesita el transporte `smtp` y el dominio `example.com` permitidos (`bun run keys client:create ... --transports smtp,api --from-domains example.com`).
+Con todo en Docker, el host SMTP es `mailpit` en lugar de `localhost` (la API y el worker lo resuelven en la red de Docker). El correo aparece en http://localhost:8025 y `GET /v1/emails/<id>` pasa a `sent`. El cliente necesita el transporte `smtp` y el dominio `example.com` permitidos (`bun run keys client:create ... --transports smtp,api --from-domains example.com`).
 
 ### Mailgun y SES con credenciales reales
 
@@ -129,6 +187,78 @@ Los webhooks actualizan el estado de cada destinatario (`delivered`, `bounced`, 
 - **SES** (`POST /v1/webhooks/ses`): en el _configuration set_ de `SES_CONFIGURATION_SET`, crea un destino de eventos de SNS con `Delivery`, `Bounce` y `Complaint`, en un topic de la región de `AWS_REGION`. Añade el ARN del topic a `SES_SNS_TOPIC_ARNS` y suscribe `https://<host>/v1/webhooks/ses` por HTTPS: la API confirma la suscripción sola.
 
 Para probarlos en local hace falta una URL pública que llegue a la API (por ejemplo, un túnel). Al enviar un correo a una dirección de prueba que rebota (`bounce@simulator.amazonses.com` en SES), el destinatario pasa a `bounced`, aparece en `bun run suppressions list` y el siguiente envío por `api` a esa dirección queda `suppressed`.
+
+## Despliegue
+
+El servicio se despliega como servidor tradicional con la imagen del `Dockerfile`: Node 24 slim, sin Bun, usuario no root `10001:10001` y `NODE_ENV=production`.
+
+```bash
+docker build -t mail-service:<versión> .
+```
+
+Con esa imagen se ejecutan tres procesos, cada uno con su comando:
+
+| Proceso     | Comando                             | Notas                                                                                                         |
+| ----------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Migraciones | `node dist/scripts/migrate.js`      | Antes de arrancar una versión nueva; es idempotente.                                                          |
+| API         | `node dist/server.js` (por defecto) | Puerto `PORT` (3000). `HEALTHCHECK` de la imagen contra `/health`; `/ready` comprueba PostgreSQL y Redis.     |
+| Worker      | `node dist/worker.js`               | Health en `WORKER_HEALTH_PORT` (3001): sustituye el `HEALTHCHECK` por `/health` de ese puerto. No se publica. |
+
+En producción:
+
+- **No se monta la CA local ni se define `NODE_EXTRA_CA_CERTS`**: los servidores SMTP de los clientes presentan certificados de CAs públicas. La verificación TLS no se puede desactivar.
+- **`SMTP_ALLOWED_PRIVATE_HOSTS` vacía**: la API y el worker no arrancan si tiene algún valor.
+- **Los dominios de `from` permitidos (`ALLOWED_FROM_DOMAINS` y los de cada cliente) deben estar verificados en Mailgun o SES**; si no, el proveedor rechaza el envío y el mensaje queda en `failed`.
+- **Apagado ordenado**: la API y el worker atienden `SIGTERM`. El worker termina los jobs activos antes de salir, así que conviene dar margen al apagado (p. ej. `stop_grace_period: 60s`).
+
+### Exposición y proxy inverso
+
+La API se sirve siempre por TLS, directamente o tras un proxy inverso, y solo en la red interna. Las únicas rutas que se publican en internet son los webhooks, que se autentican por la firma del proveedor. Ejemplo con nginx en un nombre dedicado a los webhooks:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name hooks.example.com;
+    ssl_certificate     /etc/nginx/tls/hooks.example.com.pem;
+    ssl_certificate_key /etc/nginx/tls/hooks.example.com-key.pem;
+
+    client_max_body_size 1m;   # la API también lo limita a 1 MiB en estas rutas
+
+    location = /v1/webhooks/mailgun {
+        limit_except POST { deny all; }
+        proxy_pass http://mail-api:3000;
+    }
+    location = /v1/webhooks/ses {
+        limit_except POST { deny all; }
+        proxy_pass http://mail-api:3000;
+    }
+    location / {
+        return 404;    # /v1/emails, /docs, /health y /ready no salen a internet
+    }
+}
+```
+
+## Operación
+
+### Rotación de `SMTP_CREDENTIALS_ENCRYPTION_KEY`
+
+Las credenciales SMTP de los mensajes pendientes se guardan cifradas con la clave activa, y cada texto cifrado indica con qué clave se cifró. Para rotarla sin perder mensajes:
+
+1. Genera la clave nueva: `openssl rand -base64 32`.
+2. En el **worker**, define `SMTP_CREDENTIALS_ENCRYPTION_KEY=<nueva>` y `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS=<anterior>` y reinícialo. Va primero: así puede descifrar con las dos claves antes de que llegue nada cifrado con la nueva.
+3. Haz el mismo cambio en la **API** y reiníciala. A partir de aquí todo se cifra con la clave nueva.
+4. Espera `PENDING_MAX_AGE_MS` (24 h por defecto). Pasado ese plazo ningún mensaje pendiente conserva credenciales cifradas con la clave anterior: o se han enviado o han caducado (`EXPIRED`), y en ambos casos sus credenciales se borran.
+5. Quita `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS` de la API y del worker y reinícialos.
+
+Un mensaje cuyas credenciales no se pueden descifrar con ninguna de las dos claves queda en `failed` con el código `SMTP_CONFIG_UNDECRYPTABLE`.
+
+### Retención
+
+La retención se ejecuta cada hora en el worker, por lotes, y nunca toca los mensajes pendientes ni la lista de supresión:
+
+- A los `PAYLOAD_RETENTION_DAYS` (7) se vacía el contenido (cuerpo y adjuntos) de los mensajes en estado final. El `GET` sigue mostrando su estado.
+- A los `EVENTS_RETENTION_DAYS` (90) se borran los eventos de los webhooks.
+- A los `MESSAGE_RETENTION_DAYS` (365) se borran los mensajes finales con sus destinatarios, intentos y eventos. Desde entonces `GET /v1/emails/:id` responde 404 y la `Idempotency-Key` del mensaje queda libre para reutilizarse.
 
 ## Decisiones
 
@@ -224,3 +354,13 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 - **Solo la ruta del proveedor configurado**: si se cambia `MAIL_API_PROVIDER`, los eventos que aún lleguen del proveedor anterior reciben 404. La especificación OpenAPI documenta las dos.
 - **CLI de supresiones** con salida separada por tabuladores (`email`, motivo, origen, fecha) y los mensajes más antiguos primero. `add` con una dirección ya suprimida conserva la entrada original. Valida el email y el motivo antes de tocar la base de datos (código 2). El parseo de argumentos se comparte con el CLI de keys en `src/interfaces/cli/cli-support.ts`.
 - **Certificado de SNS para tests**: `test/fixtures/sns/` contiene una clave RSA y un certificado autofirmado generados solo para los tests, que firman los mensajes como lo haría SNS.
+
+### Fase 6: producción
+
+- **Imágenes base con versión exacta**: `node:24.22.2` para compilar, con el binario de Bun copiado de `oven/bun:1.4.4`, y `node:24.22.2-slim` para la imagen final, que no lleva Bun. Los ficheros de la imagen son de `root` y el proceso corre como `10001:10001`, así que no puede modificarlos.
+- **La imagen incluye `package.json`** (por `"type": "module"`, que necesita el ESM de `dist/`) **y `drizzle/`**, porque las migraciones se buscan relativas al directorio de trabajo `/app`.
+- **`HEALTHCHECK` con `fetch` de Node** contra `/health` de la API, porque la imagen slim no trae `curl`. Usa `/health` y no `/ready` para que un fallo momentáneo de PostgreSQL o Redis no marque el contenedor como no sano; `/ready` queda para el balanceador. En el Compose, el worker lo sustituye por su `/health` y los procesos de una sola ejecución lo desactivan.
+- **Servicio `migrate` en el Compose**: aplica las migraciones y termina. `api` y `worker` esperan a que acabe bien, y también a que PostgreSQL y Redis estén sanos.
+- **El Compose sobrescribe las variables que dependen de la red de Docker** (`DATABASE_URL`, `REDIS_URL`, `SMTP_ALLOWED_PRIVATE_HOSTS=mailpit`) y fija `NODE_ENV=development`, porque es de desarrollo. El resto sale de `.env`, que es opcional: sin él, la API y el worker se niegan a arrancar por la configuración que falta.
+- **Para los tests de integración y `bun run dev` basta con la infraestructura**: `docker compose up -d --wait postgres redis mailpit`, sin construir la imagen.
+- **`bun audit`**: Bun 1.4.4 lo soporta. Sin vulnerabilidades altas; queda la moderada de `esbuild` en dependencias de desarrollo, anotada en la fase 2, y las dependencias de producción (`bun audit --prod`) están limpias.

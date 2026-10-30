@@ -20,7 +20,7 @@
 | 3 | API HTTP y autenticación | Completada |
 | 4 | Proveedores reales | Completada |
 | 5 | Webhooks y supresión | Completada |
-| 6 | Producción | En curso |
+| 6 | Producción | Completada |
 
 ---
 
@@ -1115,10 +1115,10 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
   - sección "Decisiones".
 
 **Aceptación:**
-- [ ] `docker compose up` levanta todo y un envío de extremo a extremo funciona contra Mailpit.
-- [ ] Una key creada con `docker compose run --rm tools node dist/scripts/keys.js key:create ...` funciona en la API en ejecución sin reiniciarla, y al revocarla la API responde 401 en la siguiente petición.
-- [ ] La imagen con `NODE_ENV=production` se niega a arrancar si `SMTP_ALLOWED_PRIVATE_HOSTS` no está vacío.
-- [ ] `bun audit` sin vulnerabilidades conocidas de severidad alta (si la versión de Bun no lo soporta, usar la alternativa que indique su documentación y anotarlo en "Decisiones").
+- [x] `docker compose up` levanta todo y un envío de extremo a extremo funciona contra Mailpit.
+- [x] Una key creada con `docker compose run --rm tools node dist/scripts/keys.js key:create ...` funciona en la API en ejecución sin reiniciarla, y al revocarla la API responde 401 en la siguiente petición.
+- [x] La imagen con `NODE_ENV=production` se niega a arrancar si `SMTP_ALLOWED_PRIVATE_HOSTS` no está vacío.
+- [x] `bun audit` sin vulnerabilidades conocidas de severidad alta (si la versión de Bun no lo soporta, usar la alternativa que indique su documentación y anotarlo en "Decisiones").
 
 **Diseño acordado al empezar la fase (2026-10-30):**
 - Imágenes base con versión exacta: `node:24.22.2` para el build (con `bun` copiado de `oven/bun:1.4.4`) y `node:24.22.2-slim` para la imagen final.
@@ -1129,15 +1129,15 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - Para los tests de integración y `bun run dev` basta con levantar solo la infraestructura: `docker compose up -d --wait postgres redis mailpit`.
 
 **Verificación:**
-- [ ] La imagen se construye, corre como `10001:10001`, no contiene `bun` y su `HEALTHCHECK` pasa.
-- [ ] `docker compose up -d --build --wait` deja `api` y `worker` sanos tras aplicar las migraciones.
-- [ ] Envío SMTP de extremo a extremo contra Mailpit desde los contenedores (worker con la CA local montada), con estado `sent`.
-- [ ] Key creada y revocada con `docker compose run --rm tools node dist/scripts/keys.js ...` sin reiniciar la API (401 tras revocar).
-- [ ] `docker compose run --rm tools node dist/scripts/suppressions.js list` funciona.
-- [ ] La imagen con `NODE_ENV=production` y `SMTP_ALLOWED_PRIVATE_HOSTS` no vacío sale con error de configuración (API y worker).
-- [ ] `bun audit` sin vulnerabilidades altas.
-- [ ] README completo según la lista de esta fase.
-- [ ] `bun run lint`, `typecheck`, tests unitarios y de integración y `openapi:check` en verde.
+- [x] La imagen se construye, corre como `10001:10001`, no contiene `bun` y su `HEALTHCHECK` pasa.
+- [x] `docker compose up -d --build --wait` deja `api` y `worker` sanos tras aplicar las migraciones.
+- [x] Envío SMTP de extremo a extremo contra Mailpit desde los contenedores (worker con la CA local montada), con estado `sent`.
+- [x] Key creada y revocada con `docker compose run --rm tools node dist/scripts/keys.js ...` sin reiniciar la API (401 tras revocar).
+- [x] `docker compose run --rm tools node dist/scripts/suppressions.js list` funciona.
+- [x] La imagen con `NODE_ENV=production` y `SMTP_ALLOWED_PRIVATE_HOSTS` no vacío sale con error de configuración (API y worker).
+- [x] `bun audit` sin vulnerabilidades altas.
+- [x] README completo según la lista de esta fase.
+- [x] `bun run lint`, `typecheck`, tests unitarios y de integración y `openapi:check` en verde.
 
 ---
 
