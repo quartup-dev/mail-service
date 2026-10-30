@@ -992,7 +992,7 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 **Aceptación:**
 - [ ] Payloads firmados de ejemplo: válidos, firma incorrecta, timestamp caducado y repetidos.
 - [ ] SNS: `SignatureVersion` 1 y 2, versión desconocida, `SigningCertURL` con `http`, con un host ajeno o con un host que solo contiene `amazonaws.com` como subcadena (p. ej. `sns.eu-west-1.amazonaws.com.evil.example`).
-- [ ] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
+- [x] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
 - [ ] En un mensaje con dos destinatarios, uno `delivered` y otro `bounced`, cada uno queda con su estado.
 - [ ] Un rebote permanente añade el destinatario a supresión y bloquea envíos posteriores por `api`, pero no por `smtp`.
 - [ ] `suppressions remove` permite volver a enviar.
@@ -1055,15 +1055,15 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [ ] Otros `eventType` se ignoran.
 
 *`POST /v1/webhooks/mailgun`*
-- [ ] Evento firmado válido → 204 y el destinatario avanza de estado.
-- [ ] Firma incorrecta y timestamp caducado → 401 `UNAUTHORIZED` sin procesar.
-- [ ] Token repetido → 204 sin procesar de nuevo.
-- [ ] Cuerpo sin `signature` o sin `event-data` → 400.
-- [ ] Cuerpo mayor de 1 MiB → 413.
-- [ ] Evento ignorado → 204 sin registrar nada.
-- [ ] Si el procesado falla → 500 y el token queda libre para el reintento.
-- [ ] No usa API key ni rate limit.
-- [ ] Sin `MAIL_API_PROVIDER=mailgun` la ruta no existe (404).
+- [x] Evento firmado válido → 204 y el destinatario avanza de estado.
+- [x] Firma incorrecta y timestamp caducado → 401 `UNAUTHORIZED` sin procesar.
+- [x] Token repetido → 204 sin procesar de nuevo.
+- [x] Cuerpo sin `signature` o sin `event-data` → 400.
+- [x] Cuerpo mayor de 1 MiB → 413.
+- [x] Evento ignorado → 204 sin registrar nada.
+- [x] Si el procesado falla → 500 y el token queda libre para el reintento.
+- [x] No usa API key ni rate limit.
+- [x] Sin `MAIL_API_PROVIDER=mailgun` la ruta no existe (404).
 
 *`POST /v1/webhooks/ses`*
 - [ ] Acepta `Content-Type: text/plain` con JSON; el parser solo existe en esta ruta (`POST /v1/emails` con `text/plain` sigue dando 400).
@@ -1078,7 +1078,7 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 
 *Flujos de aceptación*
 - [ ] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
-- [ ] Mensaje con dos destinatarios: uno `delivered` y otro `bounced`, cada uno con su estado.
+- [x] Mensaje con dos destinatarios: uno `delivered` y otro `bounced`, cada uno con su estado.
 - [ ] Un rebote permanente suprime el destinatario: el siguiente envío por `api` lo omite y por `smtp` lo envía.
 - [ ] `suppressions remove` permite volver a enviar por `api`.
 

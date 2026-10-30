@@ -6,6 +6,7 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { apiRequest, smtpRequest } from '../../../support/email-requests';
 import { auth, BILLING_KEY, buildTestApp, CRM_KEY } from '../../../support/http';
+import { signedMailgunWebhook } from '../../../support/webhooks';
 
 const DOCUMENT_ID = 'openapi';
 
@@ -104,5 +105,25 @@ describe('responses match openapi.yaml', () => {
 
     expect(response?.statusCode).toBe(429);
     expectToMatchContract('/v1/emails/{id}', 'get', response as LightMyRequestResponse);
+  });
+
+  it('400 and 401 of POST /v1/webhooks/mailgun', async () => {
+    let clock;
+    ({ app, clock } = buildTestApp());
+    const signed = signedMailgunWebhook(clock, { recipient: 'a@dominio.com' });
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/v1/webhooks/mailgun',
+      payload: { signature: signed.signature },
+    });
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/v1/webhooks/mailgun',
+      payload: { ...signed, signature: { ...signed.signature, signature: 'forged' } },
+    });
+
+    expect([invalid.statusCode, unauthorized.statusCode]).toEqual([400, 401]);
+    expectToMatchContract('/v1/webhooks/mailgun', 'post', invalid);
+    expectToMatchContract('/v1/webhooks/mailgun', 'post', unauthorized);
   });
 });

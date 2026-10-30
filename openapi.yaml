@@ -211,6 +211,78 @@ components:
             - email: cliente@dominio.com
           subject: Bienvenido
           text: Hola
+    MailgunEventData:
+      type: object
+      properties:
+        event:
+          type: string
+          description: delivered, failed, complained, unsubscribed... El resto se ignora
+        timestamp:
+          type: number
+          description: Hora del evento, en segundos desde epoch
+        recipient:
+          type: string
+          description: Destinatario afectado
+        severity:
+          description: "Solo en failed: permanent es un rebote"
+          type: string
+          enum:
+            - permanent
+            - temporary
+        message:
+          type: object
+          properties:
+            headers:
+              type: object
+              properties:
+                message-id:
+                  description: Id del mensaje en Mailgun, sin <>
+                  type: string
+              additionalProperties: {}
+          required:
+            - headers
+          additionalProperties: {}
+        user-variables:
+          type: object
+          properties:
+            messageId:
+              description: Id interno del mensaje (v:messageId)
+              type: string
+          additionalProperties: {}
+      required:
+        - event
+        - timestamp
+        - recipient
+      additionalProperties: {}
+      description: Evento de Mailgun
+    MailgunSignature:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          description: Segundos desde epoch
+        token:
+          type: string
+          description: Cadena aleatoria de un solo uso
+        signature:
+          type: string
+          description: HMAC-SHA256 en hex de timestamp + token
+      required:
+        - timestamp
+        - token
+        - signature
+      description: Firma del webhook de Mailgun
+    MailgunWebhookRequest:
+      type: object
+      properties:
+        signature:
+          $ref: "#/components/schemas/MailgunSignature"
+        event-data:
+          $ref: "#/components/schemas/MailgunEventData"
+      required:
+        - signature
+        - event-data
+      description: Webhook de eventos de Mailgun
     EmailStatus:
       type: string
       enum:
@@ -910,8 +982,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/webhooks/mailgun:
+    post:
+      summary: Recibe los eventos de entrega de Mailgun
+      tags:
+        - webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MailgunWebhookRequest"
+      responses:
+        "204":
+          description: Evento procesado, ignorado o repetido
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+        "400":
+          description: Cuerpo inválido (VALIDATION_ERROR)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Firma inválida o timestamp fuera de la ventana de 5 minutos
+            (UNAUTHORIZED)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Cuerpo demasiado grande (PAYLOAD_TOO_LARGE)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error interno (INTERNAL_ERROR); el proveedor reintentará el evento
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 tags:
   - name: emails
     description: Envío y estado de mensajes
   - name: health
     description: Estado del servicio
+  - name: webhooks
+    description: Eventos de entrega de los proveedores (expuestos a internet,
+      autenticados por firma)

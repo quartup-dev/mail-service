@@ -16,6 +16,7 @@ const EXPECTED_RESPONSES: Record<string, Record<string, string[]>> = {
   '/v1/emails/{id}': { get: ['200', '400', '401', '404', '429', '500'] },
   '/health': { get: ['200'] },
   '/ready': { get: ['200', '503'] },
+  '/v1/webhooks/mailgun': { post: ['204', '400', '401', '413', '500'] },
 };
 
 describe('OpenAPI document', () => {
@@ -91,6 +92,9 @@ describe('OpenAPI document', () => {
         'ErrorCode',
         'ErrorResponse',
         'HealthResponse',
+        'MailgunEventData',
+        'MailgunSignature',
+        'MailgunWebhookRequest',
         'ProviderName',
         'ReadyResponse',
         'RecipientKind',

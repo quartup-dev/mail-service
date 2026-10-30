@@ -99,6 +99,11 @@ export function registerOpenApi(app: FastifyInstance, version: string): void {
       tags: [
         { name: 'emails', description: 'Envío y estado de mensajes' },
         { name: 'health', description: 'Estado del servicio' },
+        {
+          name: 'webhooks',
+          description:
+            'Eventos de entrega de los proveedores (expuestos a internet, autenticados por firma)',
+        },
       ],
       components: {
         securitySchemes: {

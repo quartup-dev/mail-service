@@ -1,14 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { GetEmailStatus } from '../../application/get-email-status';
+import { HandleProviderEvent } from '../../application/handle-provider-event';
 import type { EmailQueue } from '../../application/ports/email-queue';
 import { QueueEmail } from '../../application/queue-email';
 import { InMemoryApiClientRepository } from '../../infrastructure/auth/in-memory-api-client-repository';
 import { AesGcmSecretBox } from '../../infrastructure/crypto/aes-gcm-secret-box';
 import { UuidV7IdGenerator } from '../../infrastructure/crypto/uuid-v7-id-generator';
 import { InMemoryEmailRepository } from '../../infrastructure/db/in-memory/in-memory-email-repository';
+import { InMemorySuppressionRepository } from '../../infrastructure/db/in-memory/in-memory-suppression-repository';
 import { createLogger } from '../../infrastructure/logger';
 import { UnavailableSmtpHostGuard } from '../../infrastructure/providers/unavailable';
 import { SystemClock } from '../../infrastructure/system-clock';
+import { InMemoryReplayGuard } from '../../infrastructure/webhooks/in-memory-replay-guard';
+import { MailgunWebhookVerifier } from '../../infrastructure/webhooks/mailgun-webhook-verifier';
 import { buildApp } from './app';
 
 // Ninguna de estas piezas se usa al generar la especificación: solo hacen falta para montar las rutas
@@ -40,6 +44,19 @@ export function buildOpenApiApp(version: string): FastifyInstance {
     getEmailStatus: new GetEmailStatus({ emails }),
     readiness: { postgres: async () => {}, redis: async () => {}, apiProvider: null },
     version,
+    // La especificación documenta los webhooks de los dos proveedores
+    webhooks: {
+      handleProviderEvent: new HandleProviderEvent({
+        emails,
+        suppressions: new InMemorySuppressionRepository(clock),
+        clock,
+      }),
+      mailgun: new MailgunWebhookVerifier({
+        signingKey: 'unused',
+        replayGuard: new InMemoryReplayGuard(clock),
+        clock,
+      }),
+    },
   });
 }
 

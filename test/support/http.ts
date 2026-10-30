@@ -1,16 +1,21 @@
 import { Writable } from 'node:stream';
 import { GetEmailStatus } from '../../src/application/get-email-status';
+import { HandleProviderEvent } from '../../src/application/handle-provider-event';
 import { QueueEmail } from '../../src/application/queue-email';
 import { hashApiKeySecret } from '../../src/infrastructure/auth/api-keys';
 import { InMemoryApiClientRepository } from '../../src/infrastructure/auth/in-memory-api-client-repository';
 import { AesGcmSecretBox } from '../../src/infrastructure/crypto/aes-gcm-secret-box';
 import { InMemoryEmailRepository } from '../../src/infrastructure/db/in-memory/in-memory-email-repository';
+import { InMemorySuppressionRepository } from '../../src/infrastructure/db/in-memory/in-memory-suppression-repository';
 import { createLogger } from '../../src/infrastructure/logger';
+import { InMemoryReplayGuard } from '../../src/infrastructure/webhooks/in-memory-replay-guard';
+import { MailgunWebhookVerifier } from '../../src/infrastructure/webhooks/mailgun-webhook-verifier';
 import { buildApp, type AppDependencies } from '../../src/interfaces/http/app';
 import { FakeClock } from './fake-clock';
 import { FakeEmailQueue } from './fake-email-queue';
 import { FakeSmtpHostGuard } from './fake-smtp-host-guard';
 import { SequentialIds } from './sequential-ids';
+import { MAILGUN_SIGNING_KEY } from './webhooks';
 
 const PEPPER = Buffer.alloc(32, 3);
 
@@ -30,6 +35,10 @@ export interface TestAppOptions {
 export function buildTestApp(options: TestAppOptions = {}) {
   const clock = new FakeClock();
   const emails = new InMemoryEmailRepository(clock);
+  const suppressions = new InMemorySuppressionRepository(clock);
+  const replayGuard = new InMemoryReplayGuard(clock);
+  const apiProviderName =
+    options.apiProviderName === undefined ? 'mailgun' : options.apiProviderName;
   const queue = new FakeEmailQueue();
   const smtpHostGuard = new FakeSmtpHostGuard();
   const secretBox = new AesGcmSecretBox({ active: Buffer.alloc(32, 1) });
@@ -88,7 +97,7 @@ export function buildTestApp(options: TestAppOptions = {}) {
       secretBox,
       ids: new SequentialIds(),
       logger,
-      apiProviderName: options.apiProviderName === undefined ? 'mailgun' : options.apiProviderName,
+      apiProviderName,
       allowedFromDomains: ['example.com'],
       requestHashPepper: PEPPER,
     }),
@@ -100,7 +109,24 @@ export function buildTestApp(options: TestAppOptions = {}) {
       ...options.readiness,
     },
     version: '0.0.0-test',
+    // Como en producción, solo el webhook del proveedor configurado
+    webhooks: {
+      handleProviderEvent: new HandleProviderEvent({ emails, suppressions, clock }),
+      mailgun:
+        apiProviderName === 'mailgun'
+          ? new MailgunWebhookVerifier({ signingKey: MAILGUN_SIGNING_KEY, replayGuard, clock })
+          : null,
+    },
   });
 
-  return { app, clock, emails, queue, smtpHostGuard, logs: () => logs.join('') };
+  return {
+    app,
+    clock,
+    emails,
+    suppressions,
+    replayGuard,
+    queue,
+    smtpHostGuard,
+    logs: () => logs.join(''),
+  };
 }

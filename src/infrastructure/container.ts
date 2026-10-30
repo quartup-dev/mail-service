@@ -11,6 +11,7 @@ import type { EmailApiProvider } from '../application/ports/email-api-provider';
 import type { Clock } from '../application/ports/clock';
 import type { Logger } from '../application/ports/logger';
 import { GetEmailStatus } from '../application/get-email-status';
+import { HandleProviderEvent } from '../application/handle-provider-event';
 import { ProcessEmailJob } from '../application/process-email-job';
 import { QueueEmail } from '../application/queue-email';
 import { SweepPendingEmails } from '../application/sweep-pending-emails';
@@ -30,6 +31,8 @@ import { NodemailerSmtpSender } from './providers/nodemailer-smtp-sender';
 import { SesApiProvider, sesClientConfig } from './providers/ses-api-provider';
 import { BullMqEmailQueue } from './queue/bullmq-email-queue';
 import { SystemClock } from './system-clock';
+import { MailgunWebhookVerifier } from './webhooks/mailgun-webhook-verifier';
+import { RedisReplayGuard } from './webhooks/redis-replay-guard';
 
 const MAINTENANCE_BATCH_SIZE = 1_000;
 
@@ -224,6 +227,21 @@ export function createApiContainer(
       apiProvider: null,
     },
     version: packageJson.version,
+    webhooks: {
+      handleProviderEvent: new HandleProviderEvent({
+        emails,
+        suppressions: new DrizzleSuppressionRepository(db, clock),
+        clock,
+      }),
+      mailgun:
+        config.mailApiProvider?.name === 'mailgun'
+          ? new MailgunWebhookVerifier({
+              signingKey: config.mailApiProvider.webhookSigningKey,
+              replayGuard: new RedisReplayGuard(redis),
+              clock,
+            })
+          : null,
+    },
   });
 
   app.addHook('onClose', async () => {
