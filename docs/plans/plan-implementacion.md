@@ -1083,11 +1083,11 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [ ] `suppressions remove` permite volver a enviar por `api`.
 
 *CLI de supresiones*
-- [ ] `list` muestra dirección, motivo, origen y fecha; `--reason` filtra.
-- [ ] `add --email` añade con motivo `manual` y origen `cli`, en minúsculas.
-- [ ] `remove --email` quita la dirección.
-- [ ] Email inválido, motivo desconocido, comando desconocido o sin argumentos → uso y código 2.
-- [ ] Integración con PostgreSQL: `add`, `list` y `remove` contra `DrizzleSuppressionRepository`.
+- [x] `list` muestra dirección, motivo, origen y fecha; `--reason` filtra.
+- [x] `add --email` añade con motivo `manual` y origen `cli`, en minúsculas.
+- [x] `remove --email` quita la dirección.
+- [x] Email inválido, motivo desconocido, comando desconocido o sin argumentos → uso y código 2.
+- [x] Integración con PostgreSQL: `add`, `list` y `remove` contra `DrizzleSuppressionRepository`.
 
 *Contenedor y OpenAPI*
 - [x] Las respuestas de los webhooks cumplen `openapi.yaml`.

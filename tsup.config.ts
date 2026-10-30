@@ -6,6 +6,7 @@ export default defineConfig({
     worker: 'src/worker.ts',
     'scripts/migrate': 'scripts/migrate.ts',
     'scripts/keys': 'scripts/keys.ts',
+    'scripts/suppressions': 'scripts/suppressions.ts',
   },
   format: ['esm'],
   platform: 'node',

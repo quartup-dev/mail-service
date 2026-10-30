@@ -1,4 +1,3 @@
-import { parseArgs } from 'node:util';
 import type { TransportType } from '../../domain/email';
 import {
   ApiClientAdminError,
@@ -6,11 +5,14 @@ import {
   type ClientSummary,
   type DrizzleApiClientAdmin,
 } from '../../infrastructure/auth/drizzle-api-client-admin';
-
-export interface CliOutput {
-  out(line: string): void;
-  err(line: string): void;
-}
+import {
+  type CliOutput,
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_USAGE,
+  parseCommandLine,
+  UsageError,
+} from './cli-support';
 
 const USAGE = `Usage: keys <command> [options]
 
@@ -35,20 +37,13 @@ const OPTIONS = {
 
 type Options = Partial<Record<keyof typeof OPTIONS, string>>;
 
-// Argumentos inválidos: se informa del uso antes de tocar la base de datos
-class UsageError extends Error {}
-
-const EXIT_OK = 0;
-const EXIT_FAILURE = 1;
-const EXIT_USAGE = 2;
-
 export async function runKeysCli(
   argv: string[],
   admin: DrizzleApiClientAdmin,
   output: CliOutput,
 ): Promise<number> {
   try {
-    const { command, options } = parseCommandLine(argv);
+    const { command, options } = parseCommandLine(argv, OPTIONS);
     await runCommand(command, options, admin, output);
     return EXIT_OK;
   } catch (error) {
@@ -61,22 +56,6 @@ export async function runKeysCli(
       return EXIT_FAILURE;
     }
     throw error;
-  }
-}
-
-function parseCommandLine(argv: string[]): { command: string; options: Options } {
-  try {
-    const { positionals, values } = parseArgs({
-      args: argv,
-      options: OPTIONS,
-      allowPositionals: true,
-    });
-    const [command] = positionals;
-    if (!command || positionals.length > 1) throw new UsageError('Expected exactly one command');
-    return { command, options: values };
-  } catch (error) {
-    if (error instanceof UsageError) throw error;
-    throw new UsageError(error instanceof Error ? error.message : String(error));
   }
 }
 
