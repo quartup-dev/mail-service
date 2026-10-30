@@ -1048,11 +1048,11 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] La confirmación hace GET a `SubscribeURL` y lanza si no es 2xx.
 
 *Eventos de SES → `ProviderEvent`*
-- [ ] `Delivery`: un evento por destinatario, con la hora de entrega, el tag `messageId` y `mail.messageId`.
-- [ ] `Bounce` `Permanent` → `bounced` por cada destinatario rebotado; `Transient` y `Undetermined` → `temporary_failure`.
-- [ ] `Complaint` → `complained` por cada destinatario.
-- [ ] Sin tag `messageId`, solo `providerMessageId`.
-- [ ] Otros `eventType` se ignoran.
+- [x] `Delivery`: un evento por destinatario, con la hora de entrega, el tag `messageId` y `mail.messageId`.
+- [x] `Bounce` `Permanent` → `bounced` por cada destinatario rebotado; `Transient` y `Undetermined` → `temporary_failure`.
+- [x] `Complaint` → `complained` por cada destinatario.
+- [x] Sin tag `messageId`, solo `providerMessageId`.
+- [x] Otros `eventType` se ignoran.
 
 *`POST /v1/webhooks/mailgun`*
 - [x] Evento firmado válido → 204 y el destinatario avanza de estado.
