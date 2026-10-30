@@ -17,6 +17,7 @@ const EXPECTED_RESPONSES: Record<string, Record<string, string[]>> = {
   '/health': { get: ['200'] },
   '/ready': { get: ['200', '503'] },
   '/v1/webhooks/mailgun': { post: ['204', '400', '401', '413', '500'] },
+  '/v1/webhooks/ses': { post: ['204', '400', '401', '413', '500'] },
 };
 
 describe('OpenAPI document', () => {
@@ -99,6 +100,7 @@ describe('OpenAPI document', () => {
         'ReadyResponse',
         'RecipientKind',
         'RecipientStatus',
+        'SnsMessage',
         'SmtpServer',
         'SmtpTransport',
         'TransportType',

@@ -283,6 +283,55 @@ components:
         - signature
         - event-data
       description: Webhook de eventos de Mailgun
+    SnsMessage:
+      type: object
+      properties:
+        Type:
+          type: string
+          enum:
+            - Notification
+            - SubscriptionConfirmation
+            - UnsubscribeConfirmation
+          description: Tipo de mensaje de SNS
+        MessageId:
+          type: string
+        TopicArn:
+          type: string
+          description: Debe estar en SES_SNS_TOPIC_ARNS
+        Message:
+          type: string
+          description: En Notification, el evento de SES en JSON
+        Timestamp:
+          type: string
+          description: Fecha ISO 8601 de publicación
+        SignatureVersion:
+          type: string
+          description: 1 (SHA1withRSA) o 2 (SHA256withRSA)
+        Signature:
+          type: string
+          description: Firma en base64
+        SigningCertURL:
+          type: string
+          description: https://sns.<región>.amazonaws.com/....pem
+        Subject:
+          type: string
+        SubscribeURL:
+          description: Solo en las confirmaciones
+          type: string
+        Token:
+          description: Solo en las confirmaciones
+          type: string
+      required:
+        - Type
+        - MessageId
+        - TopicArn
+        - Message
+        - Timestamp
+        - SignatureVersion
+        - Signature
+        - SigningCertURL
+      additionalProperties: {}
+      description: Mensaje de SNS (se envía con Content-Type text/plain)
     EmailStatus:
       type: string
       enum:
@@ -1037,6 +1086,74 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Error interno (INTERNAL_ERROR); el proveedor reintentará el evento
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/webhooks/ses:
+    post:
+      summary: Recibe por SNS los eventos de entrega de SES
+      tags:
+        - webhooks
+      description: Notificaciones del topic de SNS del configuration set de SES.
+        Confirma automáticamente las suscripciones de los topics de
+        SES_SNS_TOPIC_ARNS.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnsMessage"
+      responses:
+        "204":
+          description: Evento procesado, ignorado o repetido, o suscripción confirmada
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+        "400":
+          description: Cuerpo inválido o Message que no es un evento de SES
+            (VALIDATION_ERROR)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Firma inválida, certificado o topic no permitidos, o Timestamp
+            fuera de plazo (UNAUTHORIZED)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Cuerpo demasiado grande (PAYLOAD_TOO_LARGE)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Identificador de la petición (el recibido o uno generado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error interno (INTERNAL_ERROR); SNS reintentará la entrega
           headers:
             X-Request-Id:
               schema:

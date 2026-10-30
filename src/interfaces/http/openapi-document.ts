@@ -13,6 +13,7 @@ import { UnavailableSmtpHostGuard } from '../../infrastructure/providers/unavail
 import { SystemClock } from '../../infrastructure/system-clock';
 import { InMemoryReplayGuard } from '../../infrastructure/webhooks/in-memory-replay-guard';
 import { MailgunWebhookVerifier } from '../../infrastructure/webhooks/mailgun-webhook-verifier';
+import { SnsMessageVerifier } from '../../infrastructure/webhooks/sns-message-verifier';
 import { buildApp } from './app';
 
 // Ninguna de estas piezas se usa al generar la especificación: solo hacen falta para montar las rutas
@@ -56,6 +57,16 @@ export function buildOpenApiApp(version: string): FastifyInstance {
         replayGuard: new InMemoryReplayGuard(clock),
         clock,
       }),
+      ses: {
+        verifier: new SnsMessageVerifier({
+          region: 'unused',
+          topicArns: [],
+          downloadCertificate: async () => '',
+          replayGuard: new InMemoryReplayGuard(clock),
+          clock,
+        }),
+        subscriptions: { confirmSubscription: async () => {} },
+      },
     },
   });
 }

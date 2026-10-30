@@ -6,7 +6,7 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { apiRequest, smtpRequest } from '../../../support/email-requests';
 import { auth, BILLING_KEY, buildTestApp, CRM_KEY } from '../../../support/http';
-import { signedMailgunWebhook } from '../../../support/webhooks';
+import { signedMailgunWebhook, signedSnsMessage } from '../../../support/webhooks';
 
 const DOCUMENT_ID = 'openapi';
 
@@ -125,5 +125,25 @@ describe('responses match openapi.yaml', () => {
     expect([invalid.statusCode, unauthorized.statusCode]).toEqual([400, 401]);
     expectToMatchContract('/v1/webhooks/mailgun', 'post', invalid);
     expectToMatchContract('/v1/webhooks/mailgun', 'post', unauthorized);
+  });
+
+  it('400 and 401 of POST /v1/webhooks/ses', async () => {
+    let clock;
+    ({ app, clock } = buildTestApp({ apiProviderName: 'ses' }));
+    const post = (payload: string) =>
+      (app as FastifyInstance).inject({
+        method: 'POST',
+        url: '/v1/webhooks/ses',
+        headers: { 'content-type': 'text/plain' },
+        payload,
+      });
+    const invalid = await post('not json');
+    const unauthorized = await post(
+      JSON.stringify(signedSnsMessage(clock, { Signature: Buffer.from('x').toString('base64') })),
+    );
+
+    expect([invalid.statusCode, unauthorized.statusCode]).toEqual([400, 401]);
+    expectToMatchContract('/v1/webhooks/ses', 'post', invalid);
+    expectToMatchContract('/v1/webhooks/ses', 'post', unauthorized);
   });
 });

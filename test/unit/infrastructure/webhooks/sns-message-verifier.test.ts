@@ -193,4 +193,18 @@ describe('SnsMessageVerifier', () => {
     await expect(verifier.verify(signedSnsMessage(clock))).rejects.toThrow('network down');
     await expect(verifier.verify(signedSnsMessage(clock))).resolves.not.toBeNull();
   });
+
+  it('rejects a confirmation whose SubscribeURL is not an SNS URL of the region', async () => {
+    const { verifier, signed } = setup();
+
+    await expect(
+      verifier.verify(
+        signed({
+          Type: 'SubscriptionConfirmation',
+          SubscribeURL: 'https://internal.example/admin?Token=abc',
+          Token: 'abc',
+        }),
+      ),
+    ).rejects.toThrow(new WebhookRejectedError('untrusted_subscribe_url'));
+  });
 });

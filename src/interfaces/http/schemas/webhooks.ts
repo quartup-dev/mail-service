@@ -41,3 +41,24 @@ export const MailgunWebhookRequestSchema = z
   .meta({ id: 'MailgunWebhookRequest', description: 'Webhook de eventos de Mailgun' });
 
 export type MailgunEventData = z.output<typeof MailgunEventDataSchema>;
+
+export const SnsMessageSchema = z
+  .looseObject({
+    Type: z
+      .enum(['Notification', 'SubscriptionConfirmation', 'UnsubscribeConfirmation'])
+      .describe('Tipo de mensaje de SNS'),
+    MessageId: z.string(),
+    TopicArn: z.string().describe('Debe estar en SES_SNS_TOPIC_ARNS'),
+    Message: z.string().describe('En Notification, el evento de SES en JSON'),
+    Timestamp: z.string().describe('Fecha ISO 8601 de publicación'),
+    SignatureVersion: z.string().describe('1 (SHA1withRSA) o 2 (SHA256withRSA)'),
+    Signature: z.string().describe('Firma en base64'),
+    SigningCertURL: z.string().describe('https://sns.<región>.amazonaws.com/....pem'),
+    Subject: z.string().optional(),
+    SubscribeURL: z.string().optional().describe('Solo en las confirmaciones'),
+    Token: z.string().optional().describe('Solo en las confirmaciones'),
+  })
+  .meta({
+    id: 'SnsMessage',
+    description: 'Mensaje de SNS (se envía con Content-Type text/plain)',
+  });

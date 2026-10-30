@@ -79,6 +79,10 @@ export class SnsMessageVerifier {
     );
     if (!signed) throw new WebhookRejectedError('invalid_signature');
     if (!this.isRecent(message.Timestamp)) throw new WebhookRejectedError('stale_timestamp');
+    // La API hará un GET a SubscribeURL para confirmar: solo a SNS de la región
+    if (message.SubscribeURL !== undefined && !isSnsUrl(message.SubscribeURL, this.deps.region)) {
+      throw new WebhookRejectedError('untrusted_subscribe_url');
+    }
     return claimOnce(this.deps.replayGuard, `ses:${message.MessageId}`, REPLAY_TTL_MS);
   }
 

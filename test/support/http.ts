@@ -10,12 +10,13 @@ import { InMemorySuppressionRepository } from '../../src/infrastructure/db/in-me
 import { createLogger } from '../../src/infrastructure/logger';
 import { InMemoryReplayGuard } from '../../src/infrastructure/webhooks/in-memory-replay-guard';
 import { MailgunWebhookVerifier } from '../../src/infrastructure/webhooks/mailgun-webhook-verifier';
+import { SnsMessageVerifier } from '../../src/infrastructure/webhooks/sns-message-verifier';
 import { buildApp, type AppDependencies } from '../../src/interfaces/http/app';
 import { FakeClock } from './fake-clock';
 import { FakeEmailQueue } from './fake-email-queue';
 import { FakeSmtpHostGuard } from './fake-smtp-host-guard';
 import { SequentialIds } from './sequential-ids';
-import { MAILGUN_SIGNING_KEY } from './webhooks';
+import { MAILGUN_SIGNING_KEY, SNS_REGION, SNS_TEST_CERTIFICATE, SNS_TOPIC_ARN } from './webhooks';
 
 const PEPPER = Buffer.alloc(32, 3);
 
@@ -40,6 +41,7 @@ export function buildTestApp(options: TestAppOptions = {}) {
   const apiProviderName =
     options.apiProviderName === undefined ? 'mailgun' : options.apiProviderName;
   const queue = new FakeEmailQueue();
+  const confirmedSubscriptions: string[] = [];
   const smtpHostGuard = new FakeSmtpHostGuard();
   const secretBox = new AesGcmSecretBox({ active: Buffer.alloc(32, 1) });
   const apiClients = new InMemoryApiClientRepository(PEPPER, clock);
@@ -116,6 +118,23 @@ export function buildTestApp(options: TestAppOptions = {}) {
         apiProviderName === 'mailgun'
           ? new MailgunWebhookVerifier({ signingKey: MAILGUN_SIGNING_KEY, replayGuard, clock })
           : null,
+      ses:
+        apiProviderName === 'ses'
+          ? {
+              verifier: new SnsMessageVerifier({
+                region: SNS_REGION,
+                topicArns: [SNS_TOPIC_ARN],
+                downloadCertificate: async () => SNS_TEST_CERTIFICATE,
+                replayGuard,
+                clock,
+              }),
+              subscriptions: {
+                confirmSubscription: async (url) => {
+                  confirmedSubscriptions.push(url);
+                },
+              },
+            }
+          : null,
     },
   });
 
@@ -125,6 +144,7 @@ export function buildTestApp(options: TestAppOptions = {}) {
     emails,
     suppressions,
     replayGuard,
+    confirmedSubscriptions,
     queue,
     smtpHostGuard,
     logs: () => logs.join(''),

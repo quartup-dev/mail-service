@@ -1066,15 +1066,15 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Sin `MAIL_API_PROVIDER=mailgun` la ruta no existe (404).
 
 *`POST /v1/webhooks/ses`*
-- [ ] Acepta `Content-Type: text/plain` con JSON; el parser solo existe en esta ruta (`POST /v1/emails` con `text/plain` sigue dando 400).
-- [ ] `Notification` firmada válida → 204 y los destinatarios avanzan de estado.
-- [ ] Firma inválida, versión desconocida, `SigningCertURL` no permitida, topic no permitido o `Timestamp` caducado → 401.
-- [ ] `MessageId` repetido → 204 sin procesar de nuevo.
-- [ ] `SubscriptionConfirmation` de un topic permitido → confirma con GET a `SubscribeURL` y 204.
-- [ ] `UnsubscribeConfirmation` → 204 sin hacer nada.
-- [ ] JSON inválido, `Message` que no es un evento de SES o tipo desconocido → 400.
-- [ ] Si el procesado falla → 500 y el `MessageId` queda libre.
-- [ ] Sin `MAIL_API_PROVIDER=ses` la ruta no existe (404).
+- [x] Acepta `Content-Type: text/plain` con JSON; el parser solo existe en esta ruta (`POST /v1/emails` con `text/plain` sigue dando 400).
+- [x] `Notification` firmada válida → 204 y los destinatarios avanzan de estado.
+- [x] Firma inválida, versión desconocida, `SigningCertURL` no permitida, topic no permitido o `Timestamp` caducado → 401.
+- [x] `MessageId` repetido → 204 sin procesar de nuevo.
+- [x] `SubscriptionConfirmation` de un topic permitido → confirma con GET a `SubscribeURL` y 204.
+- [x] `UnsubscribeConfirmation` → 204 sin hacer nada.
+- [x] JSON inválido, `Message` que no es un evento de SES o tipo desconocido → 400.
+- [x] Si el procesado falla → 500 y el `MessageId` queda libre.
+- [x] Sin `MAIL_API_PROVIDER=ses` la ruta no existe (404).
 
 *Flujos de aceptación*
 - [ ] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
@@ -1090,7 +1090,7 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [ ] Integración con PostgreSQL: `add`, `list` y `remove` contra `DrizzleSuppressionRepository`.
 
 *Contenedor y OpenAPI*
-- [ ] Las respuestas de los webhooks cumplen `openapi.yaml`.
+- [x] Las respuestas de los webhooks cumplen `openapi.yaml`.
 - [ ] Integración: webhook de Mailgun contra la API con PostgreSQL y Redis, incluida la repetición.
 
 ---

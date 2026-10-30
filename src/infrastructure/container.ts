@@ -33,10 +33,14 @@ import { BullMqEmailQueue } from './queue/bullmq-email-queue';
 import { SystemClock } from './system-clock';
 import { MailgunWebhookVerifier } from './webhooks/mailgun-webhook-verifier';
 import { RedisReplayGuard } from './webhooks/redis-replay-guard';
+import { SnsHttpClient } from './webhooks/sns-http-client';
+import { SnsMessageVerifier } from './webhooks/sns-message-verifier';
 
 const MAINTENANCE_BATCH_SIZE = 1_000;
 
 const RETENTION_INTERVAL_MS = 3_600_000;
+
+const SNS_HTTP_TIMEOUT_MS = 10_000;
 
 // Un cliente por proceso. Sus errores (reconexiones) van al log en lugar de a la consola
 function connectRedis(url: string, options: RedisOptions, logger: Logger): Redis {
@@ -172,6 +176,25 @@ export function createWorkerContainer(config: WorkerConfig, logger: Logger): Wor
   };
 }
 
+// Un único cliente HTTP para SNS: descarga certificados y confirma suscripciones
+function createSesWebhook(
+  provider: { region: string; snsTopicArns: string[] },
+  replayGuard: RedisReplayGuard,
+  clock: Clock,
+) {
+  const sns = new SnsHttpClient(fetch, SNS_HTTP_TIMEOUT_MS);
+  return {
+    verifier: new SnsMessageVerifier({
+      region: provider.region,
+      topicArns: provider.snsTopicArns,
+      downloadCertificate: (url) => sns.downloadCertificate(url),
+      replayGuard,
+      clock,
+    }),
+    subscriptions: sns,
+  };
+}
+
 export interface ApiContainer {
   app: FastifyInstance;
 }
@@ -191,6 +214,8 @@ export function createApiContainer(
   const clock = new SystemClock();
   const emails = new DrizzleEmailRepository(db, clock);
   const emailQueue = new BullMqEmailQueue(redis, { ...config.jobs, logger });
+  const replayGuard = new RedisReplayGuard(redis);
+  const provider = config.mailApiProvider;
 
   const app = buildApp({
     logger,
@@ -234,13 +259,14 @@ export function createApiContainer(
         clock,
       }),
       mailgun:
-        config.mailApiProvider?.name === 'mailgun'
+        provider?.name === 'mailgun'
           ? new MailgunWebhookVerifier({
-              signingKey: config.mailApiProvider.webhookSigningKey,
-              replayGuard: new RedisReplayGuard(redis),
+              signingKey: provider.webhookSigningKey,
+              replayGuard,
               clock,
             })
           : null,
+      ses: provider?.name === 'ses' ? createSesWebhook(provider, replayGuard, clock) : null,
     },
   });
 

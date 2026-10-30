@@ -5,13 +5,14 @@ import type { HandleProviderEvent } from '../../application/handle-provider-even
 import type { ApiClientRepository } from '../../application/ports/api-client-repository';
 import type { QueueEmail } from '../../application/queue-email';
 import type { MailgunWebhookVerifier } from '../../infrastructure/webhooks/mailgun-webhook-verifier';
+import type { SnsMessageVerifier } from '../../infrastructure/webhooks/sns-message-verifier';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { emailRoutes } from './routes/emails';
 import { registerOpenApi } from './plugins/openapi';
 import { registerErrorHandling } from './plugins/error-handling';
 import { exposeRequestId, generateRequestId } from './plugins/request-id';
 import { healthRoutes, type ApiReadinessChecks } from './routes/health';
-import { mailgunWebhookRoutes } from './routes/webhooks';
+import { mailgunWebhookRoutes, sesWebhookRoutes, type SesWebhookOptions } from './routes/webhooks';
 
 export interface AppDependencies {
   logger?: FastifyBaseLogger;
@@ -30,6 +31,10 @@ export interface AppDependencies {
   webhooks: {
     handleProviderEvent: HandleProviderEvent;
     mailgun: MailgunWebhookVerifier | null;
+    ses: {
+      verifier: SnsMessageVerifier;
+      subscriptions: SesWebhookOptions['subscriptions'];
+    } | null;
   };
 }
 
@@ -56,7 +61,8 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
       ...(deps.rateLimitRedis && { redis: deps.rateLimitRedis }),
     },
   });
-  const { handleProviderEvent, mailgun } = deps.webhooks;
+  const { handleProviderEvent, mailgun, ses } = deps.webhooks;
   if (mailgun) void app.register(mailgunWebhookRoutes, { verifier: mailgun, handleProviderEvent });
+  if (ses) void app.register(sesWebhookRoutes, { ...ses, handleProviderEvent });
   return app;
 }
