@@ -6,6 +6,7 @@ coverage/
 # Entorno y secretos
 .env
 .env.*
+mail-service-gmail.env
 !.env.example
 
 # Certificados de desarrollo (los genera scripts/dev-certs.sh)

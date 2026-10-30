@@ -10,3 +10,4 @@ docker
 docs
 test
 *.log
+mail-service-gmail.env
