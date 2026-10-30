@@ -64,7 +64,7 @@ export class MailgunApiProvider implements EmailApiProvider {
       });
     return {
       provider: this.name,
-      providerMessageId: (result.id ?? '').replace(/^<|>$/g, ''),
+      providerMessageId: withoutAngleBrackets(result.id ?? ''),
       acceptedAt: this.deps.clock.now(),
     };
   }
@@ -154,4 +154,9 @@ function classify(error: unknown): { transient: boolean; code: string } {
 
 function fieldsOf(error: unknown): MailgunApiErrorFields {
   return typeof error === 'object' && error !== null ? error : {};
+}
+
+// Mailgun devuelve el id del envío como <id>; sus eventos lo traen con o sin <>
+export function withoutAngleBrackets(messageId: string): string {
+  return messageId.replace(/^<|>$/g, '');
 }

@@ -1025,11 +1025,11 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Una petición con firma inválida no reserva el token.
 
 *Eventos de Mailgun → `ProviderEvent`*
-- [ ] `delivered` con destinatario, hora del evento, `user-variables.messageId` y `message-id` sin `<>`.
-- [ ] `failed` permanente → `bounced`; temporal → `temporary_failure`.
-- [ ] `complained` y `unsubscribed`.
-- [ ] Sin `user-variables`, solo `providerMessageId`.
-- [ ] Otros eventos se ignoran.
+- [x] `delivered` con destinatario, hora del evento, `user-variables.messageId` y `message-id` sin `<>`.
+- [x] `failed` permanente → `bounced`; temporal → `temporary_failure`.
+- [x] `complained` y `unsubscribed`.
+- [x] Sin `user-variables`, solo `providerMessageId`.
+- [x] Otros eventos se ignoran.
 
 *Firma de SNS*
 - [ ] `SignatureVersion` 1 (SHA1withRSA) y 2 (SHA256withRSA) válidas.
