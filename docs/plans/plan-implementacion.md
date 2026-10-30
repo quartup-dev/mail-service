@@ -1043,9 +1043,9 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Descarga el certificado una sola vez por URL; un fallo de descarga no se cachea.
 
 *Descarga de certificados y confirmación de suscripción (`fetch` simulado)*
-- [ ] Devuelve el PEM con respuesta 2xx y lanza con otra.
-- [ ] No sigue redirecciones y aplica timeout.
-- [ ] La confirmación hace GET a `SubscribeURL` y lanza si no es 2xx.
+- [x] Devuelve el PEM con respuesta 2xx y lanza con otra.
+- [x] No sigue redirecciones y aplica timeout.
+- [x] La confirmación hace GET a `SubscribeURL` y lanza si no es 2xx.
 
 *Eventos de SES → `ProviderEvent`*
 - [ ] `Delivery`: un evento por destinatario, con la hora de entrega, el tag `messageId` y `mail.messageId`.
