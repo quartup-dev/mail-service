@@ -1079,8 +1079,8 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 *Flujos de aceptación*
 - [ ] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
 - [x] Mensaje con dos destinatarios: uno `delivered` y otro `bounced`, cada uno con su estado.
-- [ ] Un rebote permanente suprime el destinatario: el siguiente envío por `api` lo omite y por `smtp` lo envía.
-- [ ] `suppressions remove` permite volver a enviar por `api`.
+- [x] Un rebote permanente suprime el destinatario: el siguiente envío por `api` lo omite y por `smtp` lo envía.
+- [x] `suppressions remove` permite volver a enviar por `api`.
 
 *CLI de supresiones*
 - [x] `list` muestra dirección, motivo, origen y fecha; `--reason` filtra.
