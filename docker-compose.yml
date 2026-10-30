@@ -1,6 +1,79 @@
 # Entorno de desarrollo. Los puertos de PostgreSQL y Redis se publican en 55432 y 56379
 # para no chocar con instancias locales.
+#
+# docker compose up -d --build --wait            levanta todo, incluidos API y worker
+# docker compose up -d --wait postgres redis mailpit   solo la infraestructura (bun run dev, tests)
+# docker compose run --rm tools node dist/scripts/keys.js <comando>   CLIs
+
+# Configuración común de los procesos del servicio: misma imagen, distinto comando.
+# Las variables salen de .env; aquí se sobrescriben las que dependen de la red de Docker
+x-app: &app
+  build: .
+  image: mail-service:dev
+  env_file:
+    - path: .env
+      required: false
+  environment: &app-environment
+    NODE_ENV: development
+    DATABASE_URL: postgres://mail:mail@postgres:5432/mail
+    REDIS_URL: redis://redis:6379
+    SMTP_ALLOWED_PRIVATE_HOSTS: mailpit
+
 services:
+  # Aplica las migraciones y termina; API y worker esperan a que acabe bien
+  migrate:
+    <<: *app
+    command: ['node', 'dist/scripts/migrate.js']
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    ports:
+      - '3000:3000'
+    depends_on: &app-dependencies
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Monta la CA local para confiar en el certificado de Mailpit; en producción no se monta
+  worker:
+    <<: *app
+    command: ['node', 'dist/worker.js']
+    environment:
+      <<: *app-environment
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+    volumes:
+      - ./docker/dev-certs:/certs:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    depends_on: *app-dependencies
+
+  # CLIs de keys y supresiones; no arranca con docker compose up
+  tools:
+    <<: *app
+    profiles: ['tools']
+    command: ['node', 'dist/scripts/keys.js', 'list']
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:18.6-alpine
     environment:

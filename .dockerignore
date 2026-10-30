@@ -1,0 +1,12 @@
+# Solo entra en el contexto lo que copia el Dockerfile
+node_modules
+dist
+coverage
+.git
+.claude
+.env
+.env.*
+docker
+docs
+test
+*.log
