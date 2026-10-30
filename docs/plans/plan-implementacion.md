@@ -1091,7 +1091,7 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 
 *Contenedor y OpenAPI*
 - [x] Las respuestas de los webhooks cumplen `openapi.yaml`.
-- [ ] Integración: webhook de Mailgun contra la API con PostgreSQL y Redis, incluida la repetición.
+- [x] Integración: webhook de Mailgun contra la API con PostgreSQL y Redis, incluida la repetición.
 
 ---
 
