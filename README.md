@@ -8,7 +8,7 @@ Microservicio de envío de correo para los servicios internos. Una API HTTP reci
 ## Arquitectura
 
 ```
-servicio interno ──POST /v1/emails──▶ API ──▶ PostgreSQL (mensaje, destinatarios)
+servicios propios ──POST /v1/emails──▶ API ──▶ PostgreSQL (mensaje, destinatarios)
                                        │
                                        └──▶ Redis/BullMQ: emails-api | emails-smtp
                                                          │
@@ -17,6 +17,7 @@ servicio interno ──POST /v1/emails──▶ API ──▶ PostgreSQL (mensaj
 Mailgun / SNS (SES) ──POST /v1/webhooks/*──▶ API ──▶ estado por destinatario y supresión
 ```
 
+- **Quién llama a la API**: nuestros servicios, que pueden estar en otras máquinas. Llegan por HTTPS a través del proxy inverso, que solo deja pasar sus IPs (ver [Despliegue](#despliegue)).
 - **Dos procesos con la misma imagen**: la API (`node dist/server.js`) y el worker (`node dist/worker.js`). Se escalan por separado.
 - **Colas**: `emails-api` y `emails-smtp`, para que un servidor SMTP lento no frene los envíos por API, y `maintenance`, con el barrido de pendientes (cada minuto) y la retención (cada hora).
 - **Estados**: el mensaje pasa por `queued` → `sending` → `sent` | `failed` | `suppressed`. Cada destinatario avanza por `pending` → `accepted` → `delivered` | `bounced` | `complained` | `unsubscribed` (o queda `suppressed` o `rejected`), y nunca retrocede.
@@ -47,7 +48,7 @@ Genera las claves con `openssl rand -base64 32`. Reglas que se comprueban al arr
 
 - `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS`, si se define, es distinta de la activa.
 - `PAYLOAD_RETENTION_DAYS` ≤ `EVENTS_RETENTION_DAYS` ≤ `MESSAGE_RETENTION_DAYS`.
-- Con `NODE_ENV=production`, `SMTP_ALLOWED_PRIVATE_HOSTS` está vacía.
+- Con `NODE_ENV=production`, `SMTP_ALLOWED_PRIVATE_HOSTS` está vacía y `TRUST_PROXY` (IPs o CIDR del proxy inverso, solo API) está definida.
 
 ## Ejecución local
 
@@ -208,35 +209,58 @@ En producción:
 
 - **No se monta la CA local ni se define `NODE_EXTRA_CA_CERTS`**: los servidores SMTP de los clientes presentan certificados de CAs públicas. La verificación TLS no se puede desactivar.
 - **`SMTP_ALLOWED_PRIVATE_HOSTS` vacía**: la API y el worker no arrancan si tiene algún valor.
+- **`TRUST_PROXY` con la IP del proxy inverso** (o su red, en CIDR): la API no arranca sin ella. Solo de esas direcciones acepta `X-Forwarded-For` y `X-Forwarded-Proto`, y en producción responde 403 `HTTPS_REQUIRED` a cualquier petición a `/v1/emails` que no haya llegado al proxy por HTTPS.
 - **Los dominios de `from` permitidos (`ALLOWED_FROM_DOMAINS` y los de cada cliente) deben estar verificados en Mailgun o SES**; si no, el proveedor rechaza el envío y el mensaje queda en `failed`.
 - **Apagado ordenado**: la API y el worker atienden `SIGTERM`. El worker termina los jobs activos antes de salir, así que conviene dar margen al apagado (p. ej. `stop_grace_period: 60s`).
 
 ### Exposición y proxy inverso
 
-La API se sirve siempre por TLS, directamente o tras un proxy inverso, y solo en la red interna. Las únicas rutas que se publican en internet son los webhooks, que se autentican por la firma del proveedor. Ejemplo con nginx en un nombre dedicado a los webhooks:
+La API no sirve TLS: va siempre detrás de un proxy inverso que termina el TLS. Nuestros servicios pueden estar en otras máquinas, así que el proxy publica en internet, por HTTPS:
+
+- **`/v1/emails`, solo para las IPs de nuestras máquinas.** Esas peticiones llevan la API key y las credenciales SMTP.
+- **Los webhooks, abiertos**: Mailgun y SNS llegan desde IPs que no controlamos y se autentican por la firma.
+- **Nada más**: `/docs`, `/health` y `/ready` no salen a internet.
+
+El proxy escucha **solo en el 443**. No se redirige el 80 al 443: cuando llegara la redirección, la API key y las credenciales ya habrían viajado sin cifrar. Ejemplo con nginx:
 
 ```nginx
 server {
     listen 443 ssl;
-    server_name hooks.example.com;
-    ssl_certificate     /etc/nginx/tls/hooks.example.com.pem;
-    ssl_certificate_key /etc/nginx/tls/hooks.example.com-key.pem;
+    server_name mail.example.com;
+    ssl_certificate     /etc/nginx/tls/mail.example.com.pem;
+    ssl_certificate_key /etc/nginx/tls/mail.example.com-key.pem;
 
-    client_max_body_size 1m;   # la API también lo limita a 1 MiB en estas rutas
+    proxy_set_header X-Forwarded-For   $remote_addr;   # IP real del cliente para la API
+    proxy_set_header X-Forwarded-Proto $scheme;        # la API exige https en producción
 
+    # Envíos y consultas: solo nuestras máquinas
+    location /v1/emails {
+        allow 203.0.113.10;    # servicio de facturación
+        allow 203.0.113.20;    # CRM
+        deny  all;
+        client_max_body_size 16m;   # algo más que MAX_BODY_BYTES (15 MiB)
+        proxy_pass http://mail-api:3000;
+    }
+
+    # Webhooks: abiertos, autenticados por la firma del proveedor
     location = /v1/webhooks/mailgun {
         limit_except POST { deny all; }
+        client_max_body_size 1m;
         proxy_pass http://mail-api:3000;
     }
     location = /v1/webhooks/ses {
         limit_except POST { deny all; }
+        client_max_body_size 1m;
         proxy_pass http://mail-api:3000;
     }
+
     location / {
-        return 404;    # /v1/emails, /docs, /health y /ready no salen a internet
+        return 404;    # /docs, /health, /ready
     }
 }
 ```
+
+En la API, `TRUST_PROXY` lleva la IP con la que el proxy llega a ella (por ejemplo, su IP en la red de Docker). Al dar de alta un servicio nuevo hay que añadir su IP a la lista del proxy.
 
 ## Operación
 
@@ -364,3 +388,11 @@ Decisiones tomadas durante la implementación que no estaban fijadas en el plan:
 - **El Compose sobrescribe las variables que dependen de la red de Docker** (`DATABASE_URL`, `REDIS_URL`, `SMTP_ALLOWED_PRIVATE_HOSTS=mailpit`) y fija `NODE_ENV=development`, porque es de desarrollo. El resto sale de `.env`, que es opcional: sin él, la API y el worker se niegan a arrancar por la configuración que falta.
 - **Para los tests de integración y `bun run dev` basta con la infraestructura**: `docker compose up -d --wait postgres redis mailpit`, sin construir la imagen.
 - **`bun audit`**: Bun 1.4.4 lo soporta. Sin vulnerabilidades altas; queda la moderada de `esbuild` en dependencias de desarrollo, anotada en la fase 2, y las dependencias de producción (`bun audit --prod`) están limpias.
+
+### Fase 7: servicios consumidores en máquinas remotas
+
+- **`/v1/emails` se publica por HTTPS solo para las IPs de nuestras máquinas**, con la lista de IPs en el proxy inverso. Se descartaron mTLS y una VPN por el coste de mantenerlos, porque nuestras máquinas tienen IP fija.
+- **El proxy no escucha en el 80**, ni siquiera para redirigir: la redirección llegaría cuando la API key y las credenciales ya hubieran viajado sin cifrar.
+- **`TRUST_PROXY` obligatoria en producción**: lista de IPs o CIDR que se pasa a `trustProxy` de Fastify. Solo de esas direcciones se aceptan `X-Forwarded-For` y `X-Forwarded-Proto`; un cliente que llegue directo no puede hacerse pasar por HTTPS ni falsear su IP.
+- **403 `HTTPS_REQUIRED` en `/v1/emails` en producción**, antes de autenticar, si la petición no llegó al proxy por HTTPS. No protege esa petición, que ya viajó en claro, pero hace que un despliegue mal configurado falle en la primera petición en lugar de funcionar en silencio. Fuera de producción no se aplica, y no hay variable para desactivarlo. Los webhooks no lo exigen: se autentican por la firma.
+- **Sin límite por IP para peticiones sin key válida**: con la lista de IPs del proxy, nadie de fuera llega a `/v1/emails`.

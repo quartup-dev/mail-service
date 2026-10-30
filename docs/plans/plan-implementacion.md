@@ -21,7 +21,7 @@
 | 4 | Proveedores reales | Completada |
 | 5 | Webhooks y supresión | Completada |
 | 6 | Producción | Completada |
-| 7 | Servicios consumidores en máquinas remotas | En curso |
+| 7 | Servicios consumidores en máquinas remotas | Completada |
 
 ---
 
@@ -1172,8 +1172,8 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] Las respuestas 403 cumplen `openapi.yaml`.
 
 **Verificación:**
-- [ ] README: exposición con la lista de IPs, ejemplo de nginx actualizado y `TRUST_PROXY` en la configuración.
-- [ ] `bun run lint`, `typecheck`, tests unitarios y de integración y `openapi:check` en verde.
+- [x] README: exposición con la lista de IPs, ejemplo de nginx actualizado y `TRUST_PROXY` en la configuración.
+- [x] `bun run lint`, `typecheck`, tests unitarios y de integración y `openapi:check` en verde.
 
 ---
 
@@ -1193,7 +1193,7 @@ Variables de entorno validadas con Zod al arrancar. Cada proceso valida solo lo 
 Reglas adicionales:
 - `SMTP_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS`, si se define, debe ser distinta de la activa.
 - `PAYLOAD_RETENTION_DAYS` ≤ `EVENTS_RETENTION_DAYS` ≤ `MESSAGE_RETENTION_DAYS`.
-- Con `NODE_ENV=production`, `SMTP_ALLOWED_PRIVATE_HOSTS` debe estar vacío.
+- Con `NODE_ENV=production`, `SMTP_ALLOWED_PRIVATE_HOSTS` debe estar vacío y `TRUST_PROXY` definida (fase 7).
 
 ```dotenv
 # General
@@ -1207,6 +1207,7 @@ API_KEY_PEPPER=                      # 32 bytes en base64
 RATE_LIMIT_DEFAULT_PER_MINUTE=120
 MAX_BODY_BYTES=15728640
 MAX_ATTACHMENTS_BYTES=10485760
+TRUST_PROXY=                         # IPs o CIDR del proxy inverso; obligatoria en producción (fase 7)
 
 # Infraestructura
 DATABASE_URL=postgres://mail:mail@localhost:55432/mail   # puerto publicado por docker-compose.yml
