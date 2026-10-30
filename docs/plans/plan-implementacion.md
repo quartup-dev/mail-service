@@ -19,7 +19,7 @@
 | 2 | Persistencia, colas y worker | Completada |
 | 3 | API HTTP y autenticación | Completada |
 | 4 | Proveedores reales | Completada |
-| 5 | Webhooks y supresión | Pendiente |
+| 5 | Webhooks y supresión | En curso |
 | 6 | Producción | Pendiente |
 
 ---
@@ -997,6 +997,101 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [ ] Un rebote permanente añade el destinatario a supresión y bloquea envíos posteriores por `api`, pero no por `smtp`.
 - [ ] `suppressions remove` permite volver a enviar.
 - [ ] `openapi.yaml` regenerado incluye los dos webhooks con sus esquemas de petición y respuesta, y `bun run openapi:check` pasa.
+
+**Diseño acordado al empezar la fase (2026-10-30):**
+- Respuestas de los webhooks: **204** procesado o ignorado; **400** cuerpo inválido; **401** `UNAUTHORIZED` (firma inválida, timestamp fuera de ventana, topic no permitido); **413**; **500**.
+- **Repeticiones**: un token de Mailgun o un `MessageId` de SNS ya visto responde **204 sin procesar**. Es un rechazo del evento, pero con 2xx para que el proveedor no siga reintentando un evento que ya procesamos.
+- **Reserva y liberación**: el token o `MessageId` se reserva (`SET NX PX` en Redis) solo después de verificar la firma, y se libera si el procesado falla (500), para que el reintento del proveedor se procese.
+- **Ventanas**: Mailgun, ±5 min (plan). SNS: `Timestamp` de hasta 1 h de antigüedad (SNS reintenta según su política de entrega) y hasta 5 min en el futuro. El TTL de la reserva es el doble de la ventana.
+- **`TopicArn`** en `SES_SNS_TOPIC_ARNS` en **todos** los tipos de mensaje SNS, antes de descargar el certificado.
+- `SigningCertURL` y `SubscribeURL`: `https`, host exactamente `sns.<AWS_REGION>.amazonaws.com` y sin puerto; el certificado, además, con ruta terminada en `.pem`. Las descargas no siguen redirecciones y tienen timeout.
+- Eventos de SES en el formato de publicación de eventos del *configuration set* (`eventType`). `Bounce` `Transient` o `Undetermined` se registra como `temporary_failure`. Otros tipos (`Send`, `Open`, `Click`, `DeliveryDelay`...) y otros eventos de Mailgun (`opened`, `clicked`, `accepted`...) se ignoran con 204.
+- Límite de cuerpo de los webhooks: 1 MiB (están expuestos a internet; SNS admite 256 KB).
+- Cada ruta se registra solo si `MAIL_API_PROVIDER` es su proveedor. La especificación OpenAPI se genera con las dos.
+
+**Casos de prueba:**
+
+*Reserva anti-repetición (`ReplayGuard`, contrato en memoria y Redis)*
+- [ ] La primera reserva de una clave se concede y la segunda no.
+- [ ] Liberar una clave permite reservarla de nuevo.
+- [ ] Claves distintas son independientes.
+- [ ] La reserva caduca tras su TTL (en memoria con `FakeClock`; en Redis, con TTL en la clave).
+
+*Firma de Mailgun*
+- [ ] Acepta HMAC-SHA256 hex de `timestamp + token` con la clave de firma.
+- [ ] Rechaza una firma incorrecta, con otra longitud o que no es hex.
+- [ ] Rechaza un timestamp de más de 5 min de antigüedad o de más de 5 min en el futuro, y uno no numérico.
+- [ ] Un token repetido se informa como repetición.
+- [ ] Una petición con firma inválida no reserva el token.
+
+*Eventos de Mailgun → `ProviderEvent`*
+- [ ] `delivered` con destinatario, hora del evento, `user-variables.messageId` y `message-id` sin `<>`.
+- [ ] `failed` permanente → `bounced`; temporal → `temporary_failure`.
+- [ ] `complained` y `unsubscribed`.
+- [ ] Sin `user-variables`, solo `providerMessageId`.
+- [ ] Otros eventos se ignoran.
+
+*Firma de SNS*
+- [ ] `SignatureVersion` 1 (SHA1withRSA) y 2 (SHA256withRSA) válidas.
+- [ ] Rechaza una versión desconocida.
+- [ ] Rechaza un mensaje alterado o una firma incorrecta.
+- [ ] Cadena a firmar de `Notification` con y sin `Subject`, y de `SubscriptionConfirmation` y `UnsubscribeConfirmation`.
+- [ ] Rechaza `SigningCertURL` con `http`, host ajeno, host con `amazonaws.com` como subcadena, otra región, puerto explícito o ruta sin `.pem`.
+- [ ] Rechaza un `TopicArn` no permitido sin descargar el certificado.
+- [ ] Rechaza un `Timestamp` de más de 1 h o de más de 5 min en el futuro.
+- [ ] Un `MessageId` repetido se informa como repetición.
+- [ ] Descarga el certificado una sola vez por URL; un fallo de descarga no se cachea.
+
+*Descarga de certificados y confirmación de suscripción (`fetch` simulado)*
+- [ ] Devuelve el PEM con respuesta 2xx y lanza con otra.
+- [ ] No sigue redirecciones y aplica timeout.
+- [ ] La confirmación hace GET a `SubscribeURL` y lanza si no es 2xx.
+
+*Eventos de SES → `ProviderEvent`*
+- [ ] `Delivery`: un evento por destinatario, con la hora de entrega, el tag `messageId` y `mail.messageId`.
+- [ ] `Bounce` `Permanent` → `bounced` por cada destinatario rebotado; `Transient` y `Undetermined` → `temporary_failure`.
+- [ ] `Complaint` → `complained` por cada destinatario.
+- [ ] Sin tag `messageId`, solo `providerMessageId`.
+- [ ] Otros `eventType` se ignoran.
+
+*`POST /v1/webhooks/mailgun`*
+- [ ] Evento firmado válido → 204 y el destinatario avanza de estado.
+- [ ] Firma incorrecta y timestamp caducado → 401 `UNAUTHORIZED` sin procesar.
+- [ ] Token repetido → 204 sin procesar de nuevo.
+- [ ] Cuerpo sin `signature` o sin `event-data` → 400.
+- [ ] Cuerpo mayor de 1 MiB → 413.
+- [ ] Evento ignorado → 204 sin registrar nada.
+- [ ] Si el procesado falla → 500 y el token queda libre para el reintento.
+- [ ] No usa API key ni rate limit.
+- [ ] Sin `MAIL_API_PROVIDER=mailgun` la ruta no existe (404).
+
+*`POST /v1/webhooks/ses`*
+- [ ] Acepta `Content-Type: text/plain` con JSON; el parser solo existe en esta ruta (`POST /v1/emails` con `text/plain` sigue dando 400).
+- [ ] `Notification` firmada válida → 204 y los destinatarios avanzan de estado.
+- [ ] Firma inválida, versión desconocida, `SigningCertURL` no permitida, topic no permitido o `Timestamp` caducado → 401.
+- [ ] `MessageId` repetido → 204 sin procesar de nuevo.
+- [ ] `SubscriptionConfirmation` de un topic permitido → confirma con GET a `SubscribeURL` y 204.
+- [ ] `UnsubscribeConfirmation` → 204 sin hacer nada.
+- [ ] JSON inválido, `Message` que no es un evento de SES o tipo desconocido → 400.
+- [ ] Si el procesado falla → 500 y el `MessageId` queda libre.
+- [ ] Sin `MAIL_API_PROVIDER=ses` la ruta no existe (404).
+
+*Flujos de aceptación*
+- [ ] Un evento que llega antes de guardar el `providerMessageId` se correlaciona por id interno.
+- [ ] Mensaje con dos destinatarios: uno `delivered` y otro `bounced`, cada uno con su estado.
+- [ ] Un rebote permanente suprime el destinatario: el siguiente envío por `api` lo omite y por `smtp` lo envía.
+- [ ] `suppressions remove` permite volver a enviar por `api`.
+
+*CLI de supresiones*
+- [ ] `list` muestra dirección, motivo, origen y fecha; `--reason` filtra.
+- [ ] `add --email` añade con motivo `manual` y origen `cli`, en minúsculas.
+- [ ] `remove --email` quita la dirección.
+- [ ] Email inválido, motivo desconocido, comando desconocido o sin argumentos → uso y código 2.
+- [ ] Integración con PostgreSQL: `add`, `list` y `remove` contra `DrizzleSuppressionRepository`.
+
+*Contenedor y OpenAPI*
+- [ ] Las respuestas de los webhooks cumplen `openapi.yaml`.
+- [ ] Integración: webhook de Mailgun contra la API con PostgreSQL y Redis, incluida la repetición.
 
 ---
 
