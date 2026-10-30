@@ -1018,11 +1018,11 @@ El fichero `openapi.yaml` de la raíz del repositorio es el contrato de la API p
 - [x] La reserva caduca tras su TTL (en memoria con `FakeClock`; en Redis, con TTL en la clave).
 
 *Firma de Mailgun*
-- [ ] Acepta HMAC-SHA256 hex de `timestamp + token` con la clave de firma.
-- [ ] Rechaza una firma incorrecta, con otra longitud o que no es hex.
-- [ ] Rechaza un timestamp de más de 5 min de antigüedad o de más de 5 min en el futuro, y uno no numérico.
-- [ ] Un token repetido se informa como repetición.
-- [ ] Una petición con firma inválida no reserva el token.
+- [x] Acepta HMAC-SHA256 hex de `timestamp + token` con la clave de firma.
+- [x] Rechaza una firma incorrecta, con otra longitud o que no es hex.
+- [x] Rechaza un timestamp de más de 5 min de antigüedad o de más de 5 min en el futuro, y uno no numérico.
+- [x] Un token repetido se informa como repetición.
+- [x] Una petición con firma inválida no reserva el token.
 
 *Eventos de Mailgun → `ProviderEvent`*
 - [ ] `delivered` con destinatario, hora del evento, `user-variables.messageId` y `message-id` sin `<>`.
